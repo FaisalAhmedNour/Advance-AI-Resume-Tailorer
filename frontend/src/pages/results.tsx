@@ -1,4 +1,3 @@
-import React from 'react';
 import DiffViewer from '../components/DiffViewer';
 import ScoreCard from '../components/ScoreCard';
 
