@@ -1,0 +1,30 @@
+Staff Frontend Engineer — Consumer Product
+Location: Austin, TX (Hybrid)
+Type: Full-time
+
+About the Role:
+We build productivity tools used by millions of consumers. Our frontend team creates fast, accessible, and delightful user experiences. We're looking for a Staff Frontend Engineer to set the technical direction for our web platform.
+
+Responsibilities:
+- Define and evolve the frontend architecture for a large-scale React application (2M+ MAU).
+- Build and maintain a shared component library with accessibility (WCAG 2.1 AA) compliance.
+- Drive performance culture — Core Web Vitals, bundle analysis, and rendering optimization.
+- Partner with product and design teams to ship high-quality features from Figma to production.
+- Act as a technical leader: conduct design reviews, establish coding standards, and mentor engineers.
+
+Required Skills:
+- 6+ years of frontend engineering experience.
+- Expert in React, TypeScript, and modern CSS (Tailwind CSS or CSS-in-JS).
+- Deep understanding of browser rendering, performance profiling, and Core Web Vitals.
+- Experience building and maintaining design systems or component libraries.
+- Hands-on with testing frameworks (Jest, Cypress, Playwright).
+
+Preferred Skills:
+- Familiarity with Next.js for SSR/SSG.
+- Experience with Storybook for component documentation.
+- Knowledge of animation libraries (Framer Motion, GSAP).
+
+Soft Skills:
+- Strong leadership and mentoring ability.
+- Excellent cross-functional collaboration.
+- Clear technical communication (written RFCs, ADRs).

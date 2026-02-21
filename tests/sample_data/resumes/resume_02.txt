@@ -1,0 +1,25 @@
+Jordan Chen
+jordan.chen@email.com | (555) 874-2190 | San Francisco, CA | github.com/jordanchen
+
+EXPERIENCE
+
+Data Engineer — Cloud Analytics Co., San Francisco, CA (Mar 2021 – Present)
+- Designed and maintained ETL pipelines in Apache Spark processing 5TB of data daily.
+- Built data warehousing solutions in BigQuery and Snowflake for business intelligence teams.
+- Automated data quality checks with Great Expectations, reducing data errors by 70%.
+- Collaborated with ML engineers to ship a churn-prediction model into production.
+
+Data Analyst — Retail Corp., San Jose, CA (Aug 2019 – Feb 2021)
+- Wrote SQL queries and built dashboards in Tableau used by 50+ stakeholders.
+- Developed Python scripts to automate weekly reporting, saving 10 hours per week.
+- Presented data insights to C-suite, influencing product roadmap decisions.
+
+EDUCATION
+M.S. Data Science — University of California (Dec 2019)
+B.S. Statistics — State College (May 2017)
+
+SKILLS
+Languages: Python, SQL, Scala, R
+Frameworks: Apache Spark, dbt, Airflow, Pandas, NumPy
+Tools: BigQuery, Snowflake, Tableau, Great Expectations, Git, Docker
+Soft Skills: Analytical thinking, Presentation, Cross-functional collaboration

@@ -1,0 +1,24 @@
+Sam Patel
+sam.patel@email.com | (555) 448-7723 | Seattle, WA | linkedin.com/in/sampatel | github.com/sampatel
+
+EXPERIENCE
+
+DevOps / Platform Engineer — E-commerce Company, Seattle, WA (Feb 2020 – Present)
+- Managed Kubernetes clusters running 200+ microservices across 3 cloud regions.
+- Built CI/CD pipelines with GitHub Actions and ArgoCD, reducing release cycle from 2 weeks to 3 days.
+- Authored Terraform modules managing AWS infrastructure (EKS, RDS, S3, CloudFront).
+- Implemented observability stack using Prometheus, Grafana, and Loki, cutting MTTR by 45%.
+
+Systems Administrator — Managed Services Provider, Seattle, WA (Jun 2017 – Jan 2020)
+- Administered Linux servers (Ubuntu, CentOS) and Windows Server environments.
+- Automated server provisioning with Ansible playbooks.
+- Supported 50 client organizations with on-call incident response.
+
+EDUCATION
+B.S. Information Technology — University of Washington (Jun 2017)
+
+SKILLS
+Languages: Bash, Python, Go, HCL (Terraform)
+Frameworks: Kubernetes, Helm, ArgoCD, Ansible
+Tools: Terraform, Docker, AWS, GitHub Actions, Prometheus, Grafana, Loki
+Soft Skills: On-call incident response, Documentation, Root cause analysis

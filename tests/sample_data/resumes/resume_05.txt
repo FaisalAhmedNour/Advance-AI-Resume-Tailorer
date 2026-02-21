@@ -1,0 +1,24 @@
+Riley Kim
+riley.kim@email.com | (555) 319-5580 | Boston, MA | github.com/rileykim | portfolio: rileykim.dev
+
+EXPERIENCE
+
+Machine Learning Engineer — HealthTech Startup, Boston, MA (Nov 2021 – Present)
+- Developed and deployed NLP models (BERT fine-tuning) for clinical note classification with 92% accuracy.
+- Built MLOps pipelines using MLflow and Kubeflow for model versioning, training, and serving.
+- Reduced model inference latency from 340ms to 80ms through ONNX export and TensorRT optimization.
+- Published 2 internal research papers on federated learning for privacy-preserving healthcare AI.
+
+Research Assistant — MIT CSAIL, Cambridge, MA (Sep 2019 – Oct 2021)
+- Assisted in research on graph neural networks applied to drug-protein interaction prediction.
+- Implemented baselines in PyTorch and benchmarked against state-of-the-art methods.
+
+EDUCATION
+M.S. Computer Science (ML focus) — MIT (Sep 2021)
+B.S. Mathematics — Boston University (May 2019) | GPA: 3.9
+
+SKILLS
+Languages: Python, C++, SQL
+Frameworks: PyTorch, TensorFlow, scikit-learn, HuggingFace, FastAPI
+Tools: MLflow, Kubeflow, ONNX, TensorRT, Docker, AWS SageMaker, Git
+Soft Skills: Research writing, Cross-team collaboration, Rapid prototyping

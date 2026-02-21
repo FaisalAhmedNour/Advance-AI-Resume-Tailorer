@@ -1,0 +1,31 @@
+Senior Platform Engineer (DevOps) — Cloud Infrastructure
+Location: Seattle, WA (Remote)
+Type: Full-time
+
+About the Role:
+We run a global e-commerce platform processing $2B in annual transactions. We are looking for a Senior Platform Engineer to own and evolve our cloud infrastructure and developer experience.
+
+Responsibilities:
+- Design, implement, and maintain Kubernetes clusters (EKS) across multi-region AWS environments.
+- Build and improve CI/CD pipelines for 100+ engineering teams using GitHub Actions and ArgoCD.
+- Write and maintain Terraform Infrastructure as Code for all cloud resources.
+- Implement observability solutions: metrics (Prometheus/Grafana), logging (Loki/ELK), and tracing (Jaeger/OpenTelemetry).
+- Drive incident response processes, post-mortem culture, and SRE practices.
+- Reduce infrastructure costs through rightsizing, spot instances, and caching strategies.
+
+Required Skills:
+- 5+ years in DevOps, SRE, or platform engineering.
+- Deep expertise in Kubernetes and Helm.
+- Proficiency in Terraform for IaC.
+- Strong scripting skills (Bash, Python, or Go).
+- Hands-on AWS experience (EKS, RDS, S3, CloudFront, IAM).
+
+Preferred Skills:
+- Experience with ArgoCD or Flux for GitOps.
+- Knowledge of eBPF-based networking tools (Cilium).
+- Certified Kubernetes Administrator (CKA) or AWS certifications.
+
+Soft Skills:
+- Strong ownership and accountability mindset.
+- Excellent documentation and runbook writing.
+- Collaborative and proactive in incident bridges.

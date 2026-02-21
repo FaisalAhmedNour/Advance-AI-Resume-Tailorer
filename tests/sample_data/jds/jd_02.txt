@@ -1,0 +1,30 @@
+Senior Data Engineer — Cloud Data Platform
+Location: San Francisco, CA (Remote-friendly)
+Type: Full-time
+
+About the Role:
+We are a data-first analytics company helping enterprises unlock value from their data. We're hiring a Senior Data Engineer to design and scale our data infrastructure.
+
+Responsibilities:
+- Design and build scalable ELT/ETL pipelines using Apache Spark and dbt.
+- Architect cloud data warehouses in Snowflake and BigQuery for analytics and ML teams.
+- Implement data quality frameworks and automated testing for critical pipelines.
+- Collaborate with ML engineers to prepare and serve feature engineering pipelines.
+- Champion data governance, lineage tracking, and cataloging best practices.
+
+Required Skills:
+- 4+ years in data engineering or related field.
+- Proficiency in Python and SQL; experience with Spark or similar distributed compute.
+- Hands-on experience with Snowflake or BigQuery.
+- Strong knowledge of workflow orchestration (Airflow, Prefect, or Dagster).
+- Experience with containerisation (Docker) and data versioning tools.
+
+Preferred Skills:
+- Experience with Scala for Spark jobs.
+- Knowledge of dbt for transformation layers.
+- Familiarity with ML feature stores (Feast, Tecton).
+
+Soft Skills:
+- Data-driven decision making.
+- Effective communication with business stakeholders.
+- Strong documentation habits.

@@ -1,0 +1,31 @@
+Senior Machine Learning Engineer — AI Products
+Location: Boston, MA (Hybrid)
+Type: Full-time
+
+About the Role:
+We are building AI-first healthcare software that helps clinicians reduce administrative burden. We're looking for a Senior ML Engineer to take our models from prototype to scalable production systems.
+
+Responsibilities:
+- Design, train, and deploy large language models (LLMs) and transformer-based NLP models for clinical text.
+- Build and maintain MLOps pipelines for model lifecycle management (training, evaluation, versioning, serving).
+- Optimize model inference latency and throughput using quantization, ONNX, and TensorRT.
+- Collaborate with clinical experts to design evaluation benchmarks and annotation pipelines.
+- Implement privacy-preserving ML techniques (federated learning, differential privacy).
+- Publish internal research reports and stay current with ML literature.
+
+Required Skills:
+- 4+ years of ML engineering experience (industry or research).
+- Expert in PyTorch or TensorFlow; experience fine-tuning transformer models (BERT, GPT).
+- Hands-on MLOps: MLflow, Kubeflow, or similar experiment tracking / model serving platforms.
+- Proficiency in Python; experience with FastAPI or similar for model serving APIs.
+- Understanding of model optimization: quantization, distillation, ONNX, TensorRT.
+
+Preferred Skills:
+- Experience with HuggingFace Transformers and PEFT/LoRA fine-tuning.
+- Knowledge of AWS SageMaker or Vertex AI.
+- Healthcare domain experience (HIPAA, clinical NLP).
+
+Soft Skills:
+- Research mindset with pragmatic engineering execution.
+- Strong written communication (papers, technical reports).
+- Comfortable working across clinical and engineering teams.

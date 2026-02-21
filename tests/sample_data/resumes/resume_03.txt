@@ -1,0 +1,24 @@
+Morgan Taylor
+morgan.taylor@email.com | (555) 632-9017 | Austin, TX | linkedin.com/in/mtaylor-dev | github.com/morgantaylor
+
+EXPERIENCE
+
+Senior Frontend Engineer — SaaS Platform, Austin, TX (Sep 2020 – Present)
+- Led frontend architecture for a B2B SaaS product used by 500+ enterprise customers.
+- Built a design system with 80+ reusable React components, cutting UI development time by 35%.
+- Integrated Stripe payment flows and Segment analytics tracking.
+- Mentored 3 junior engineers and ran weekly tech talks on performance profiling.
+
+Frontend Developer — Digital Agency, Dallas, TX (Jul 2018 – Aug 2020)
+- Delivered 12 client websites using React, Vue.js, and vanilla JavaScript.
+- Improved Lighthouse performance scores from an average of 58 to 92 across client portfolio.
+- Worked closely with designers to implement pixel-perfect UI from Figma specs.
+
+EDUCATION
+B.S. Computer Information Systems — Texas State University (May 2018)
+
+SKILLS
+Languages: JavaScript, TypeScript, HTML, CSS
+Frameworks: React, Vue.js, Next.js, Styled Components, Tailwind CSS
+Tools: Webpack, Vite, Figma, Storybook, Git, Jest, Cypress
+Soft Skills: Mentoring, Design collaboration, Attention to detail

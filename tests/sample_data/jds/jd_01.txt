@@ -1,0 +1,31 @@
+Senior Full Stack Engineer — FinTech Platform
+Location: New York, NY (Hybrid)
+Type: Full-time
+
+About the Role:
+We are a Series B fintech company building next-generation payment infrastructure. We are looking for a Senior Full Stack Engineer to join our core platform team.
+
+Responsibilities:
+- Design and build scalable REST and GraphQL APIs using Node.js and TypeScript.
+- Architect and maintain microservices deployed on Kubernetes (AWS EKS).
+- Build performant React frontends integrated with real-time WebSocket data.
+- Implement robust observability (logging, metrics, tracing) across services.
+- Lead technical design reviews and mentor junior engineers.
+- Participate in on-call rotations and incident response.
+
+Required Skills:
+- 4+ years experience in full-stack development.
+- Expert in TypeScript, Node.js, and React.
+- Strong knowledge of PostgreSQL and Redis.
+- Experience with Docker, Kubernetes, and CI/CD pipelines.
+- Familiarity with AWS (EC2, EKS, RDS, S3).
+
+Preferred Skills:
+- Experience with Kafka or other event streaming platforms.
+- Knowledge of PCI-DSS compliance and financial data security.
+- GraphQL API design experience.
+
+Soft Skills:
+- Strong written and verbal communication.
+- Ability to lead cross-functional initiatives.
+- Collaborative, team-oriented mindset.
