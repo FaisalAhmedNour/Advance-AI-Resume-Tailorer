@@ -1,5 +1,15 @@
 import React from 'react';
-import ReactDiffViewer from 'react-diff-viewer-continued';
+import dynamic from 'next/dynamic';
+
+// react-diff-viewer-continued is a CJS-only package — must be imported client-side only
+const ReactDiffViewerDynamic = dynamic(() => import('react-diff-viewer-continued'), {
+    ssr: false,
+    loading: () => (
+        <div className="rounded-lg border border-slate-200 p-4 text-sm text-slate-400 animate-pulse bg-slate-50">
+            Loading diff viewer...
+        </div>
+    )
+});
 
 interface DiffViewerProps {
     oldText: string;
@@ -9,13 +19,13 @@ interface DiffViewerProps {
 export const DiffViewer: React.FC<DiffViewerProps> = ({ oldText, newText }) => {
     return (
         <div className="rounded-lg overflow-hidden border border-slate-200 shadow-sm text-sm">
-            <ReactDiffViewer
+            <ReactDiffViewerDynamic
                 oldValue={oldText}
                 newValue={newText}
                 splitView={true}
                 hideLineNumbers={true}
                 useDarkTheme={false}
-                leftTitle="Original Form"
+                leftTitle="Original"
                 rightTitle="ATS Optimized"
                 styles={{
                     variables: {
@@ -26,7 +36,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ oldText, newText }) => {
                             removedBackground: '#FEF2F2',
                             removedColor: '#B91C1C',
                             wordAddedBackground: '#DBEAFE',
-                            wordRemovedBackground: '#FEE2E2'
+                            wordRemovedBackground: '#FEE2E2',
                         }
                     },
                     titleBlock: {
@@ -34,10 +44,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ oldText, newText }) => {
                         borderBottom: '1px solid #CBD5E1',
                         fontWeight: 600,
                         fontSize: '0.85rem'
-                    },
-                    line: {
-                        marginTop: '8px',
-                        marginBottom: '8px'
                     }
                 }}
             />

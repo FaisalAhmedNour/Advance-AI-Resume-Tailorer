@@ -1,9 +1,15 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-prime: #0F172A;
+  --color-accent: #3B82F6;
+  --color-surface: #F8FAFC;
+}
 
 @layer base {
   body {
-    @apply bg-surface text-prime antialiased;
+    background-color: var(--color-surface);
+    color: var(--color-prime);
+    -webkit-font-smoothing: antialiased;
   }
 }

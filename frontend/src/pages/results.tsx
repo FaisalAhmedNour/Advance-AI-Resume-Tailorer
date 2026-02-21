@@ -130,8 +130,8 @@ export default function Results() {
                 <h2 className="text-xl font-bold mb-6 text-slate-800 flex items-center gap-2"><CheckCircle size={22} className="text-green-500" /> Tailored Experience Bullets</h2>
                 <div className="space-y-8">
                     {session.resume.experience.map((exp) => (
-                        <div key={exp.company + exp.role}>
-                            <h3 className="font-bold text-lg mb-4 pb-2 border-b border-slate-200 inline-block">{exp.role} <span className="text-slate-400 font-normal">at {exp.company}</span></h3>
+                        <div key={(exp.company ?? '') + (exp.role ?? '')}>
+                            <h3 className="font-bold text-lg mb-4 pb-2 border-b border-slate-200 inline-block">{exp.role ?? 'Role'} <span className="text-slate-400 font-normal">at {exp.company ?? 'Company'}</span></h3>
                             <div className="space-y-6">
                                 {exp.bullets.map(bullet => {
                                     const rewriteResponse = session.rewrites[bullet];
