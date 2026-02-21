@@ -1,18 +1,46 @@
 import React from 'react';
+import ReactDiffViewer from 'react-diff-viewer-continued';
 
-const DiffViewer: React.FC<{ original: string; tailored: string }> = ({ original, tailored }) => {
+interface DiffViewerProps {
+    oldText: string;
+    newText: string;
+}
+
+export const DiffViewer: React.FC<DiffViewerProps> = ({ oldText, newText }) => {
     return (
-        <div style={{ display: 'flex', gap: '20px', padding: '20px' }}>
-            <div style={{ flex: 1, border: '1px solid #ccc', padding: '10px' }}>
-                <h3>Original Resume</h3>
-                <pre style={{ whiteSpace: 'pre-wrap' }}>{original}</pre>
-            </div>
-            <div style={{ flex: 1, border: '1px solid #4CAF50', padding: '10px' }}>
-                <h3>Tailored Resume</h3>
-                <pre style={{ whiteSpace: 'pre-wrap' }}>{tailored}</pre>
-            </div>
+        <div className="rounded-lg overflow-hidden border border-slate-200 shadow-sm text-sm">
+            <ReactDiffViewer
+                oldValue={oldText}
+                newValue={newText}
+                splitView={true}
+                hideLineNumbers={true}
+                useDarkTheme={false}
+                leftTitle="Original Form"
+                rightTitle="ATS Optimized"
+                styles={{
+                    variables: {
+                        light: {
+                            diffViewerBackground: '#F8FAFC',
+                            addedBackground: '#EFF6FF',
+                            addedColor: '#1D4ED8',
+                            removedBackground: '#FEF2F2',
+                            removedColor: '#B91C1C',
+                            wordAddedBackground: '#DBEAFE',
+                            wordRemovedBackground: '#FEE2E2'
+                        }
+                    },
+                    titleBlock: {
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #CBD5E1',
+                        fontWeight: 600,
+                        fontSize: '0.85rem'
+                    },
+                    line: {
+                        marginTop: '8px',
+                        marginBottom: '8px'
+                    }
+                }}
+            />
         </div>
     );
 };
-
-export default DiffViewer;
