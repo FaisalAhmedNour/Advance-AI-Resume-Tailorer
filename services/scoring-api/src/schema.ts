@@ -60,21 +60,21 @@ export interface RewrittenBullet {
 }
 
 export interface ScoreRequest {
-    resume: ResumeSchema;
+    originalResume: ResumeSchema;
+    tailoredResume: ResumeSchema;
     jd: JDSchema;
-    rewrittenBullets: RewrittenBullet[];
 }
 
 export interface ScoreBreakdown {
-    requiredCoverage: number;
-    preferredCoverage: number;
-    semanticSimilarity: number;
-    formatPenalty: number;
+    keywordScore: number;
+    skillScore: number;
+    experienceScore: number;
+    densityScore: number;
 }
 
 export interface ScoreResponse {
-    beforeScore: number;
-    afterScore: number;
+    originalScore: number;
+    tailoredScore: number;
+    improvement: number;
     breakdown: ScoreBreakdown;
-    afterBreakdown: ScoreBreakdown;
 }

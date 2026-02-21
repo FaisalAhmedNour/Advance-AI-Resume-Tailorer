@@ -6,7 +6,14 @@
  * Parses plain text résumés into a strongly-typed ResumeSchema.
  */
 
-import { ResumeSchema, ContactInfo, ExperienceEntry, Education, Project, Skills } from './types';
+import {
+    ResumeSchema,
+    ExperienceEntry,
+    Education,
+    Project,
+    ContactInfo,
+    Skills,
+} from '@resume-tailorer/shared';
 
 // ── Section heading patterns ──────────────────────────────────────────────────
 const SECTION_PATTERNS: Record<string, RegExp> = {
@@ -84,7 +91,7 @@ function extractSkillList(text: string): string[] {
 
 // ── Contact parser ────────────────────────────────────────────────────────────
 function parseContact(lines: string[]): ContactInfo {
-    const headerBlock = lines.slice(0, Math.min(10, lines.length)).join('\n');
+    const headerBlock = lines?.slice(0, Math.min(10, lines.length)).join('\n');
 
     // Name heuristic: first non-empty line that is NOT an email/phone/URL
     const nameLine = lines.find(l =>
@@ -128,7 +135,7 @@ function parseExperienceBlock(block: string[]): ExperienceEntry[] {
         const hasDates = DATE_RANGE_RE.test(line) || DATE_YEAR_RE.test(line);
 
         // Heuristic: lines with dates and ROLE-like words start a new entry
-        if (hasDates && !BULLET_STARTERS.test(line) && line.split(/\s+/).length <= 12) {
+        if (hasDates && !BULLET_STARTERS.test(line) && line.split(/\s+/).length <= 25) {
             if (current) {
                 entries.push({
                     company: current.company ?? 'Unknown Company',
@@ -251,8 +258,8 @@ function parseSkillsBlock(block: string[]): Skills {
     for (const line of block) {
         const colonIdx = line.indexOf(':');
         if (colonIdx > 0 && colonIdx < 30) {
-            const label = line.slice(0, colonIdx).toLowerCase();
-            const value = line.slice(colonIdx + 1);
+            const label = line?.slice(0, colonIdx).toLowerCase();
+            const value = line?.slice(colonIdx + 1);
             const items = extractSkillList(value);
             if (LANG_KEYWORDS.test(label)) skills.languages.push(...items);
             else if (FRAMEWORK_KW.test(label)) skills.frameworks.push(...items);

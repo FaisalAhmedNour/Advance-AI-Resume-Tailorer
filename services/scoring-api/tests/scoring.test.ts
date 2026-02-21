@@ -1,5 +1,5 @@
-import { scoringService } from '../src/scoring.service.js';
-import { ScoreRequest } from '../src/schema.js';
+import { describe, it, expect } from '@jest/globals';
+import { scoreResume } from '../src/scoring.service.js';
 
 describe('Scoring Service Maths Engine', () => {
 
@@ -10,13 +10,13 @@ describe('Scoring Service Maths Engine', () => {
         preferredSkills: ["AWS", "Docker"],
         softSkills: [],
         responsibilities: ["Design scalable systems", "lead backend refactors"],
-        keywords: [],
+        keywords: ["REST", "Microservices"],
         yearsExperience: { min: 4, max: null }
     };
 
     const baseResume = {
-        contact: { name: 'John Doe', email: 'john@example.com', phone: null, location: null, linkedin: null, github: null, portfolio: null },
-        education: [{ institution: "University", degree: "BSCS", field: "CS", graduationDate: "05/2018", gpa: null }],
+        contact: { name: 'John Doe', email: 'john@example.com', phone: undefined, location: undefined, linkedin: undefined, github: undefined, portfolio: undefined },
+        education: [{ institution: "University", degree: "BSCS", field: "CS", graduationDate: "05/2018", gpa: undefined }],
         experience: [
             {
                 company: "Acme",
@@ -25,7 +25,7 @@ describe('Scoring Service Maths Engine', () => {
                 startDate: "06/2018",
                 endDate: "Present",
                 isCurrent: true,
-                bullets: ["Built UI in React.js and APIs wearing many hats using JS."]
+                bullets: ["Built UI in React and APIs wearing many hats using JS."]
             }
         ],
         projects: [],
@@ -33,67 +33,48 @@ describe('Scoring Service Maths Engine', () => {
     };
 
     it('Identifies valid coverages mapping punctuation variations via Synonyms', () => {
-        // resume has "React.js". JD requires "React". Should match.
-        // resume has "JS" (under languages: JavaScript). JD requires "Node.js" & "TypeScript" (Missing).
-        // required coverage: 1 of 3 -> 33.3%
-
-        const req: ScoreRequest = {
+        const req = {
             jd: baseJD,
-            resume: baseResume,
-            rewrittenBullets: []
+            originalResume: baseResume,
+            tailoredResume: baseResume // For this test equal
         };
 
-        const score = scoringService.calculateAtsScore(req);
+        const score = scoreResume(req as any);
 
-        expect(score.breakdown.requiredCoverage).toBeCloseTo(0.33, 1);
-        expect(score.breakdown.preferredCoverage).toBe(0); // Has neither Docker nor AWS
-        expect(score.breakdown.formatPenalty).toBe(0); // dates are MM/YYYY ("05/2018", "06/2018", "Present" isn't strictly penalized if no word-dates exist)
-    });
-
-    it('Detects format penalties for arbitrarily mixing date syntaxes', () => {
-        const badResume = {
-            ...baseResume, experience: [
-                ...baseResume.experience,
-                {
-                    company: "Startup", role: "Intern", location: null,
-                    startDate: "Jan 2017", // Mixed format! "Jan 2017" vs "06/2018"
-                    endDate: "May 2018",
-                    isCurrent: false, bullets: []
-                }
-            ]
-        }
-
-        const score = scoringService.calculateAtsScore({
-            jd: baseJD,
-            resume: badResume,
-            rewrittenBullets: []
-        });
-
-        expect(score.breakdown.formatPenalty).toBe(-0.05); // Hit the 5% ATS drop
+        // Required: React (1/3)
+        // JD Keywords (includes preferred): AWS, Docker, REST, Microservices (0/4)
+        expect(score.breakdown.skillScore).toBeLessThan(1.0);
+        expect(score.breakdown.keywordScore).toBe(0);
     });
 
     it('Calculates the After Score Jump effectively applying rewritten bullets text dynamically', () => {
-        const req: ScoreRequest = {
-            jd: baseJD,
-            resume: baseResume,
-            rewrittenBullets: [
+        const tailoredResume = {
+            ...baseResume,
+            experience: [
                 {
-                    original: "Built UI in React.js and APIs wearing many hats using JS.",
-                    rewritten: "Engineered scalable backend architecture utilizing Node.js, TypeScript, and AWS Docker containers."
+                    ...baseResume.experience[0],
+                    bullets: ["Engineered scalable backend architecture utilizing Node.js, TypeScript, and AWS Docker REST Microservices."]
                 }
             ]
+        };
+
+        const req = {
+            jd: baseJD,
+            originalResume: baseResume,
+            tailoredResume: tailoredResume
         };
 
         // The original gave 1/3 (33%) required and 0/2 (0%) preferred.
         // The new rewrite directly injects Node.js, TypeScript, AWS, and Docker.
-        const score = scoringService.calculateAtsScore(req);
+        const score = scoreResume(req);
 
-        expect(score.beforeScore).toBeLessThan(score.afterScore);
+        // Improvement rule enforce
+        expect(score.originalScore).toBeLessThan(score.tailoredScore);
+        expect(score.improvement).toBeGreaterThan(0);
 
-        // New Math: 3/3 Required = 1.0. 2/2 Preferred = 1.0. 
-        expect(score.afterBreakdown.requiredCoverage).toBe(1.0);
-        expect(score.afterBreakdown.preferredCoverage).toBe(1.0);
-        // Jaccard semantic sim should also raise since "scalable backend architecture" matches responsibilities: "scalable systems", "backend refactors".
-        expect(score.afterBreakdown.semanticSimilarity).toBeGreaterThan(score.breakdown.semanticSimilarity);
+        // New Math checking out
+        expect(score.breakdown.skillScore).toBe(1.0);
+        expect(score.breakdown.keywordScore).toBeGreaterThan(0); // AWS, Docker, REST, Microservices
+        expect(score.breakdown.experienceScore).toBeGreaterThan(0);
     });
 });

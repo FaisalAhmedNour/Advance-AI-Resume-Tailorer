@@ -19,7 +19,8 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { RewriteRequest, RewriteResponse, REWRITE_SYSTEM_PROMPT } from './schema';
+import { RewriteRequest, RewriteResponseSchema as RewriteResponse } from '@resume-tailorer/shared';
+import { REWRITE_SYSTEM_PROMPT } from './schema';
 
 const TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 2;
@@ -83,9 +84,10 @@ export class AIClient {
     private readonly model;
 
     constructor() {
-        const apiKey = process.env.GEMINI_API_KEY;
+        // Docker injects GEMINI_API_KEY directly; local dev uses GEMINI_KEY_REWRITE from root .env
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY_REWRITE;
         if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-            throw new Error('[rewrite-api] GEMINI_API_KEY is not set. Add it to your .env file.');
+            throw new Error('[rewrite-api] GEMINI_API_KEY (or GEMINI_KEY_REWRITE) is not set. Add it to your .env file.');
         }
         const genAI = new GoogleGenerativeAI(apiKey);
         this.model = genAI.getGenerativeModel({
@@ -98,18 +100,27 @@ export class AIClient {
         const genResult = await withTimeout(
             this.model.generateContent({
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: 'application/json' },
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.2,
+                    maxOutputTokens: 2048,
+                },
             }),
             TIMEOUT_MS
         );
         const rawText = await genResult.response.text();
+
+        if (process.env.DEBUG === 'true') {
+            console.log('\n[DEBUG: rewrite-api] -- Raw Gemini Data --');
+            console.log(`Tokens Used => In: ${genResult.response.usageMetadata?.promptTokenCount}, Out: ${genResult.response.usageMetadata?.candidatesTokenCount}`);
+        }
 
         const cleaned = stripJsonFences(rawText);
         let parsed: unknown;
         try {
             parsed = JSON.parse(cleaned);
         } catch {
-            throw new Error(`Invalid JSON from Gemini: ${cleaned.slice(0, 200)}`);
+            throw new Error(`Invalid JSON from Gemini: ${cleaned?.slice(0, 200)}`);
         }
 
         if (
@@ -121,9 +132,13 @@ export class AIClient {
             throw new Error('Gemini response missing required fields (rewritten, confidence)');
         }
 
+        const p = parsed as Record<string, unknown>;
         return {
-            rewritten: ((parsed as Record<string, unknown>).rewritten as string).trim(),
-            confidence: Math.max(0, Math.min(100, Math.round((parsed as Record<string, unknown>).confidence as number))),
+            rewritten: (p.rewritten as string).trim(),
+            confidence: Math.max(0, Math.min(100, Math.round(p.confidence as number))),
+            explanation: typeof p.explanation === 'string' ? p.explanation : 'No explanation provided.',
+            insertedKeywords: Array.isArray(p.insertedKeywords) ? p.insertedKeywords.map(String) : [],
+            improvementScore: typeof p.improvementScore === 'number' ? p.improvementScore : 0,
         };
     }
 
@@ -151,7 +166,20 @@ Rewrite the bullet following the system rules.`;
                     }
                     // Final attempt still hallucinated → fallback
                     console.warn('[rewrite-api] Falling back to original bullet after digit hallucination.');
-                    return { rewritten: req.originalBullet, confidence: FALLBACK_CONFIDENCE };
+                    return {
+                        rewritten: req.originalBullet,
+                        confidence: FALLBACK_CONFIDENCE,
+                        explanation: 'Discarded rewrite due to digit hallucination.',
+                        insertedKeywords: [],
+                        improvementScore: 0
+                    };
+                }
+
+                if (process.env.DEBUG === 'true') {
+                    console.log('\n[DEBUG: rewrite-api] -- Bullet Rewrite Result --');
+                    console.log(`Original:  "${req.originalBullet}"`);
+                    console.log(`Rewritten: "${result.rewritten}"`);
+                    console.log(`Score: ${result.improvementScore} | Confidence: ${result.confidence}%`);
                 }
 
                 return result;
@@ -172,8 +200,19 @@ Rewrite the bullet following the system rules.`;
 
         // All retries exhausted — return safe fallback
         console.warn('[rewrite-api] All retries exhausted. Returning original bullet.');
-        return { rewritten: req.originalBullet, confidence: FALLBACK_CONFIDENCE };
+        return {
+            rewritten: req.originalBullet,
+            confidence: 0,
+            explanation: 'Fallback logic activated due to generation failure.',
+            insertedKeywords: [],
+            improvementScore: 0
+        };
     }
 }
 
-export const aiClient = new AIClient();
+// Lazy singleton — created on first request so the service boots even without GEMINI key
+let _client: AIClient | null = null;
+export function getAiClient(): AIClient {
+    if (!_client) _client = new AIClient();
+    return _client;
+}

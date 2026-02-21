@@ -16,7 +16,8 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import crypto from 'crypto';
-import { JDSchema, JD_SYSTEM_PROMPT, JD_RETRY_PROMPT_SUFFIX } from './schema';
+import { JDSchema } from '@resume-tailorer/shared';
+import { JD_SYSTEM_PROMPT, JD_RETRY_PROMPT_SUFFIX } from './schema';
 
 const TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 2;
@@ -79,9 +80,10 @@ export class AIClient {
     private readonly cache = new Map<string, JDSchema>();
 
     constructor() {
-        const apiKey = process.env.GEMINI_API_KEY;
+        // Docker injects GEMINI_API_KEY directly; local dev uses GEMINI_KEY_ANALYZER from root .env
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_KEY_ANALYZER;
         if (!apiKey || apiKey === 'your_gemini_api_key_here') {
-            throw new Error('[jd-analyzer-api] GEMINI_API_KEY is not set. Add it to your .env file.');
+            throw new Error('[jd-analyzer-api] GEMINI_API_KEY (or GEMINI_KEY_ANALYZER) is not set. Add it to your .env file.');
         }
         const genAI = new GoogleGenerativeAI(apiKey);
         this.model = genAI.getGenerativeModel({
@@ -94,7 +96,11 @@ export class AIClient {
         const genResult = await withTimeout(
             this.model.generateContent({
                 contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: 'application/json' },
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.2,
+                    maxOutputTokens: 2048,
+                },
             }),
             TIMEOUT_MS
         );
@@ -105,20 +111,28 @@ export class AIClient {
         try {
             parsed = JSON.parse(cleaned);
         } catch {
-            throw new Error(`Invalid JSON from Gemini: ${cleaned.slice(0, 200)}`);
+            throw new Error(`Invalid JSON from Gemini: ${cleaned?.slice(0, 200)}`);
         }
 
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
             throw new Error('Gemini returned a non-object JSON value');
         }
 
-        return validateAndNormalise(parsed as Record<string, unknown>);
+        const validJD = validateAndNormalise(parsed as Record<string, unknown>);
+
+        if (process.env.DEBUG === 'true') {
+            console.log('\n[DEBUG: jd-analyzer-api] -- JD Extraction --');
+            console.log(`Tokens Used => In: ${genResult.response.usageMetadata?.promptTokenCount}, Out: ${genResult.response.usageMetadata?.candidatesTokenCount}`);
+            console.log(`Keywords Found => ${validJD.keywords?.join(', ')}`);
+        }
+
+        return validJD;
     }
 
     async analyzeJD(jdText: string): Promise<JDSchema> {
         const hash = crypto.createHash('sha256').update(jdText).digest('hex');
         if (this.cache.has(hash)) {
-            console.log('[jd-analyzer-api] Cache hit:', hash.slice(0, 8));
+            console.log('[jd-analyzer-api] Cache hit:', hash?.slice(0, 8));
             return this.cache.get(hash)!;
         }
 
@@ -150,4 +164,9 @@ export class AIClient {
     }
 }
 
-export const aiClient = new AIClient();
+// Lazy singleton — created on first request so the service boots even without GEMINI key
+let _client: AIClient | null = null;
+export function getAiClient(): AIClient {
+    if (!_client) _client = new AIClient();
+    return _client;
+}

@@ -10,7 +10,8 @@
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { ResumeSchema, TemplateId } from './schema.js';
+import { TemplateId } from './schema.js';
+import { ResumeSchema } from '@resume-tailorer/shared';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = join(__dirname, '..', 'templates');
@@ -20,11 +21,12 @@ const s = (val: string | null | undefined): string => val ?? '';
 const list = (arr: string[] | undefined): string => (arr ?? []).join(', ');
 
 function buildExperienceHtml(experience: ResumeSchema['experience']): string {
+    if (!experience || !Array.isArray(experience)) return '';
     return experience.map(exp => {
         const dates = exp.isCurrent
             ? `${s(exp.startDate)} – Present`
             : `${s(exp.startDate)} – ${s(exp.endDate)}`;
-        const bullets = exp.bullets.map(b => `<li>${b}</li>`).join('\n');
+        const bullets = (exp.bullets || []).map(b => `<li>${b}</li>`).join('\n');
         return `
             <div class="exp-item">
                 <div class="exp-header">
@@ -38,24 +40,25 @@ function buildExperienceHtml(experience: ResumeSchema['experience']): string {
 }
 
 function buildEducationHtml(education: ResumeSchema['education']): string {
-    return education.map(edu => `
+    if (!education || !Array.isArray(education)) return '';
+    return education.map((edu: any) => `
         <div class="edu-item">
             <div class="edu-header">
                 <span class="edu-inst">${s(edu.institution)}</span>
-                <span class="edu-date">${s(edu.graduationDate)}</span>
+                <span class="edu-date">${s(edu.endDate || edu.graduationDate)}</span>
             </div>
             <div class="edu-degree">${s(edu.degree)}${edu.field ? ` in ${edu.field}` : ''}${edu.gpa ? ` &mdash; GPA: ${edu.gpa}` : ''}</div>
         </div>`).join('\n');
 }
 
 function buildProjectsHtml(projects: ResumeSchema['projects']): string {
-    if (!projects || projects.length === 0) return '';
-    const items = projects.map(p => `
+    if (!projects || !Array.isArray(projects) || projects.length === 0) return '';
+    const items = projects.map((p: any) => `
         <div class="proj-item">
-            <span class="proj-title">${s(p.title)}</span>
-            ${p.link ? `<a href="${p.link}" class="proj-link">${p.link}</a>` : ''}
+            <span class="proj-title">${s(p.title || p.name)}</span>
+            ${p.link || p.url ? `<a href="${p.link || p.url}" class="proj-link">${p.link || p.url}</a>` : ''}
             <p class="proj-desc">${s(p.description)}</p>
-            ${p.technologies.length ? `<div class="proj-tech">${p.technologies.join(' &bull; ')}</div>` : ''}
+            ${p.technologies?.length ? `<div class="proj-tech">${p.technologies.join(' &bull; ')}</div>` : ''}
         </div>`).join('\n');
     return `<div class="projects-section">${items}</div>`;
 }
@@ -88,11 +91,11 @@ export function renderTemplate(resume: ResumeSchema, templateId: TemplateId): st
         '{{LANGUAGES}}': list(skills?.languages),
         '{{FRAMEWORKS}}': list(skills?.frameworks),
         '{{TOOLS}}': list(skills?.tools),
-        '{{SOFT_SKILLS}}': list(skills?.softSkills),
+        '{{SOFT_SKILLS}}': list((skills as any)?.softSkills || skills?.other),
         '{{LANGUAGES_CHIPS}}': toChips(skills?.languages ?? []),
         '{{FRAMEWORKS_CHIPS}}': toChips(skills?.frameworks ?? []),
         '{{TOOLS_CHIPS}}': toChips(skills?.tools ?? []),
-        '{{SOFT_CHIPS}}': toChips(skills?.softSkills ?? []),
+        '{{SOFT_CHIPS}}': toChips((skills as any)?.softSkills || skills?.other || []),
         '{{EXPERIENCE}}': expHtml,
         '{{EDUCATION}}': eduHtml,
         '{{PROJECTS}}': projHtml,

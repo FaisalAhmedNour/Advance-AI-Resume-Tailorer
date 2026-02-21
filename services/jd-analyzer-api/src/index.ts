@@ -7,14 +7,21 @@
  * in docker-compose.yml → passed as GEMINI_API_KEY inside the container).
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+// Try project-root .env first (3 levels up from dist/src → service → services → root)
+dotenv.config({ path: resolve(__dirname, '../../../.env') });
+// Also try infra/.env as secondary source
+dotenv.config({ path: resolve(__dirname, '../../../../infra/.env') });
 import express, { Request, Response, NextFunction } from 'express';
-import { aiClient, ApiError } from './ai.client';
+import cors from 'cors';
+import { getAiClient, ApiError } from './ai.client';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3002);
 
 // ── Middleware ────────────────────────────────────────────────────────────────
+app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.use((_req, res: Response, next: NextFunction) => {
     res.setHeader('Content-Type', 'application/json');
@@ -45,7 +52,7 @@ app.post('/analyze', async (req: Request, res: Response) => {
     }
 
     try {
-        const jd = await aiClient.analyzeJD(jdText);
+        const jd = await getAiClient().analyzeJD(jdText);
         return res.json({ jd });
     } catch (err) {
         if (err instanceof ApiError) {

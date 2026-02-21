@@ -35,12 +35,28 @@ export default function Results() {
     const exportPdf = async () => {
         setExporting(true);
         try {
-            const res = await fetch('/api/export', {
+            // Rebuild tailored resume
+            const tailoredResume = JSON.parse(JSON.stringify(session.resume));
+            if (tailoredResume.experience && session.rewrites) {
+                tailoredResume.experience.forEach((exp: any) => {
+                    if (exp.bullets) {
+                        exp.bullets = exp.bullets.map((b: string) => session.rewrites[b]?.rewritten || b);
+                    }
+                });
+            }
+
+            const res = await fetch('http://localhost:3005/api/v1/export', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: sessionStorage.getItem('tailor_session')
+                body: JSON.stringify({
+                    tailoredResume,
+                    template: 'modern'
+                })
             });
-            if (!res.ok) throw new Error("Export failed");
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Export failed: ${errText}`);
+            }
 
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
@@ -51,10 +67,12 @@ export default function Results() {
             a.click();
             window.URL.revokeObjectURL(url);
             a.remove();
-        } catch (e) {
-            alert('PDF Export failed. Ensure the UI export endpoint is structured.');
+        } catch (e: any) {
+            console.error(e);
+            alert(`PDF Export failed: ${e.message}`);
+        } finally {
+            setExporting(false);
         }
-        setTimeout(() => setExporting(false), 500);
     };
 
     return (
@@ -80,10 +98,10 @@ export default function Results() {
                 {/* Score Panel */}
                 <div className="mb-10 animate-[fadeIn_0.5s_ease-out]">
                     <ScoreCard
-                        beforeScore={session.score.beforeScore}
-                        afterScore={session.score.afterScore}
-                        beforeBreakdown={session.score.breakdown}
-                        afterBreakdown={session.score.afterBreakdown}
+                        originalScore={session.score.originalScore || (session.score as any).beforeScore || 0}
+                        tailoredScore={session.score.tailoredScore || (session.score as any).afterScore || 0}
+                        improvement={session.score.improvement || ((session.score as any).afterScore - (session.score as any).beforeScore) || 0}
+                        breakdown={session.score.breakdown || (session.score as any).afterBreakdown}
                     />
                 </div>
 

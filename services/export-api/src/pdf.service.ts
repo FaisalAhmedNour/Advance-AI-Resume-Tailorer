@@ -15,8 +15,9 @@ import { chromium } from 'playwright';
  * (stateless, safe for concurrent requests at our expected load).
  */
 export async function generatePdf(html: string): Promise<Buffer> {
-    const browser = await chromium.launch({ headless: true });
+    let browser;
     try {
+        browser = await chromium.launch({ headless: true });
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'networkidle' });
         const pdfBuffer = await page.pdf({
@@ -25,7 +26,12 @@ export async function generatePdf(html: string): Promise<Buffer> {
             margin: { top: '0.5in', bottom: '0.5in', left: '0.5in', right: '0.5in' },
         });
         return Buffer.from(pdfBuffer);
+    } catch (e: any) {
+        console.error('[export-api] Playwright launch failed:', e);
+        throw new Error(`Failed to initialize PDF engine (Browser missing?). Original error: ${e.message}`);
     } finally {
-        await browser.close();
+        if (browser) {
+            await browser.close();
+        }
     }
 }

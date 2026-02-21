@@ -11,110 +11,109 @@
  *   4. Jaccard semantic sim.    (20% weight) — token overlap across résumé vs JD text
  */
 
-import { ResumeData, JDData, ScoreResponse, ScoreBreakdown } from './types';
+import { ResumeData, JDData, ScoreResponse, ScoreBreakdown, ScoreRequest } from './types';
 
-// ── Normalisation ─────────────────────────────────────────────────────────────
-function normalise(s: string): string {
-    return s.toLowerCase().replace(/[^a-z0-9+#.]/g, '');
+const STOPWORDS = new Set([
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if",
+    "in", "into", "is", "it", "no", "not", "of", "on", "or", "such",
+    "that", "the", "their", "then", "there", "these", "they", "this", "to",
+    "was", "will", "with"
+]);
+
+function tokenize(text: string): string[] {
+    return text.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 1 && !STOPWORDS.has(w));
 }
 
-function resumeTextBlob(resume: ResumeData): string {
-    const parts: string[] = [];
-    const s = resume.skills ?? {};
-    parts.push(...(s.languages ?? []), ...(s.frameworks ?? []), ...(s.tools ?? []), ...(s.other ?? []));
+function extractUniqueKeywords(text: string): Set<string> {
+    return new Set(tokenize(text));
+}
+
+function computeScore(resume: ResumeData, jd: JDData): { score: number, breakdown: ScoreBreakdown, matchedKeywords: number } {
+    const jdKeywordsText = (jd.keywords ?? []).join(' ') + ' ' + (jd.preferredSkills ?? []).join(' ');
+    const jdKeywordsSet = extractUniqueKeywords(jdKeywordsText);
+    const totalJDKeywords = Math.max(1, jdKeywordsSet.size);
+
+    const requiredSkillsSet = extractUniqueKeywords((jd.requiredSkills ?? []).join(' '));
+    const totalRequiredSkills = Math.max(1, requiredSkillsSet.size);
+
+    const resumeFullText = [
+        ...(resume.skills?.languages ?? []),
+        ...(resume.skills?.frameworks ?? []),
+        ...(resume.skills?.tools ?? []),
+        ...(resume.skills?.other ?? []),
+        ...(resume.experience ?? []).map(e => e.role + ' ' + e.company + ' ' + (e.bullets ?? []).join(' ')),
+        ...(resume.education ?? []).map(e => e.degree + ' ' + e.field),
+        resume.summary ?? ''
+    ].join(' ');
+
+    const resumeTokens = extractUniqueKeywords(resumeFullText);
+
+    let matchedJDKeywords = 0;
+    jdKeywordsSet.forEach(kw => { if (resumeTokens.has(kw)) matchedJDKeywords++; });
+
+    let matchedRequiredSkills = 0;
+    requiredSkillsSet.forEach(kw => { if (resumeTokens.has(kw)) matchedRequiredSkills++; });
+
+    let experienceText = '';
+    let totalBullets = 0;
     for (const exp of resume.experience ?? []) {
-        if (exp.role) parts.push(exp.role);
-        if (exp.company) parts.push(exp.company);
-        parts.push(...(exp.bullets ?? []));
+        totalBullets += (exp.bullets ?? []).length;
+        experienceText += (exp.bullets ?? []).join(' ') + ' ';
     }
-    for (const edu of resume.education ?? []) {
-        if (edu.degree) parts.push(edu.degree);
-        if (edu.field) parts.push(edu.field);
-    }
-    if (resume.summary) parts.push(resume.summary);
-    return parts.join(' ').toLowerCase();
-}
+    const expTokens = extractUniqueKeywords(experienceText);
 
-function jdTextBlob(jd: JDData): string {
-    return [
-        ...(jd.requiredSkills ?? []),
-        ...(jd.preferredSkills ?? []),
-        ...(jd.keywords ?? []),
-        ...(jd.responsibilities ?? []),
-    ].join(' ').toLowerCase();
-}
+    let matchedKeywordsInBullets = 0;
+    jdKeywordsSet.forEach(kw => { if (expTokens.has(kw)) matchedKeywordsInBullets++; });
+    requiredSkillsSet.forEach(kw => { if (expTokens.has(kw)) matchedKeywordsInBullets++; });
 
-// ── Matching helpers ──────────────────────────────────────────────────────────
-function skillMatch(skill: string, blob: string): boolean {
-    const norm = normalise(skill);
-    return blob.includes(norm) || blob.includes(normalise(skill.toLowerCase()));
-}
+    const keywordScore = Math.min(1, matchedJDKeywords / totalJDKeywords);
+    const skillScore = Math.min(1, matchedRequiredSkills / totalRequiredSkills);
+    const experienceScore = Math.min(1, matchedKeywordsInBullets / totalJDKeywords);
 
-function computeCoverage(
-    skills: string[],
-    resumeBlob: string
-): { matched: string[]; missing: string[]; ratio: number } {
-    if (skills.length === 0) {
-        return { matched: [], missing: [], ratio: 1 };
-    }
-    const matched: string[] = [];
-    const missing: string[] = [];
-    for (const skill of skills) {
-        if (skillMatch(skill, resumeBlob)) {
-            matched.push(skill);
-        } else {
-            missing.push(skill);
-        }
-    }
-    return { matched, missing, ratio: matched.length / skills.length };
-}
+    // Normalizing technical terms per bullet. Good density = ~2 keywords per bullet.
+    const densityScore = totalBullets > 0 ? Math.min(1, matchedKeywordsInBullets / (totalBullets * 2)) : 0;
 
-function jaccardSimilarity(textA: string, textB: string): number {
-    const setA = new Set(textA.split(/\s+/).filter(t => t.length > 2));
-    const setB = new Set(textB.split(/\s+/).filter(t => t.length > 2));
-    if (setA.size === 0 && setB.size === 0) return 1;
-    if (setA.size === 0 || setB.size === 0) return 0;
-    const intersection = [...setA].filter(t => setB.has(t)).length;
-    const union = new Set([...setA, ...setB]).size;
-    return intersection / union;
-}
+    let finalScore = (
+        keywordScore * 0.4 +
+        skillScore * 0.25 +
+        experienceScore * 0.2 +
+        densityScore * 0.15
+    ) * 100;
 
-function keywordCoverage(keywords: string[], resumeBlob: string): number {
-    if (keywords.length === 0) return 1;
-    const hits = keywords.filter(kw => resumeBlob.includes(normalise(kw))).length;
-    return hits / keywords.length;
-}
-
-// ── Main export ───────────────────────────────────────────────────────────────
-export function scoreResume(resume: ResumeData, jd: JDData): ScoreResponse {
-    const resumeBlob = normalise(resumeTextBlob(resume));
-    const jdBlob = normalise(jdTextBlob(jd));
-
-    const req = computeCoverage(jd.requiredSkills ?? [], resumeBlob);
-    const pref = computeCoverage(jd.preferredSkills ?? [], resumeBlob);
-    const kwCov = keywordCoverage(jd.keywords ?? [], resumeBlob);
-    const jaccard = jaccardSimilarity(resumeBlob, jdBlob);
+    finalScore = Math.max(20, Math.min(95, Math.round(finalScore)));
 
     const breakdown: ScoreBreakdown = {
-        requiredCoverage: Math.round(req.ratio * 1000) / 1000,
-        preferredCoverage: Math.round(pref.ratio * 1000) / 1000,
-        keywordCoverage: Math.round(kwCov * 1000) / 1000,
-        semanticSimilarity: Math.round(jaccard * 1000) / 1000,
+        keywordScore: Number(keywordScore.toFixed(3)),
+        skillScore: Number(skillScore.toFixed(3)),
+        experienceScore: Number(experienceScore.toFixed(3)),
+        densityScore: Number(densityScore.toFixed(3))
     };
 
-    const overallScore = Math.round(
-        breakdown.requiredCoverage * 40 +
-        breakdown.preferredCoverage * 15 +
-        breakdown.keywordCoverage * 25 +
-        breakdown.semanticSimilarity * 20
-    );
+    return {
+        score: finalScore,
+        breakdown,
+        matchedKeywords: matchedJDKeywords + matchedRequiredSkills
+    };
+}
+
+export function scoreResume(req: ScoreRequest): ScoreResponse {
+    const original = computeScore(req.originalResume, req.jd);
+    const tailored = computeScore(req.tailoredResume, req.jd);
+
+    let originalScore = original.score;
+    let tailoredScore = tailored.score;
+
+    if (tailored.matchedKeywords > original.matchedKeywords && tailoredScore <= originalScore) {
+        tailoredScore = Math.min(95, originalScore + 5);
+    }
 
     return {
-        overallScore,
-        beforeScore: overallScore,
-        breakdown,
-        matchedRequired: req.matched,
-        matchedPreferred: pref.matched,
-        missingRequired: req.missing,
+        originalScore,
+        tailoredScore,
+        improvement: tailoredScore - originalScore,
+        breakdown: tailored.breakdown
     };
 }

@@ -4,8 +4,9 @@
  */
 
 export interface ScoreRequest {
-    resumeData: ResumeData;
-    jdData: JDData;
+    originalResume: ResumeData;
+    tailoredResume: ResumeData;
+    jd: JDData;
 }
 
 export interface ResumeData {
@@ -29,17 +30,15 @@ export interface JDData {
 }
 
 export interface ScoreBreakdown {
-    requiredCoverage: number; // 0–1
-    preferredCoverage: number; // 0–1
-    keywordCoverage: number; // 0–1
-    semanticSimilarity: number; // 0–1 (Jaccard)
+    keywordScore: number;
+    skillScore: number;
+    experienceScore: number;
+    densityScore: number;
 }
 
 export interface ScoreResponse {
-    overallScore: number; // 0–100
-    beforeScore: number; // same as overallScore (for pipeline compatibility)
+    originalScore: number;
+    tailoredScore: number;
+    improvement: number;
     breakdown: ScoreBreakdown;
-    matchedRequired: string[];
-    matchedPreferred: string[];
-    missingRequired: string[];
 }

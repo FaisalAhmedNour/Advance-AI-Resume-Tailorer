@@ -70,15 +70,15 @@ export interface ExplainResponse {
 }
 
 export interface ScoreBreakdown {
-    requiredCoverage: number;
-    preferredCoverage: number;
-    semanticSimilarity: number;
-    formatPenalty: number;
+    keywordScore: number;
+    skillScore: number;
+    experienceScore: number;
+    densityScore: number;
 }
 
 export interface ScoreResponse {
-    beforeScore: number;
-    afterScore: number;
+    originalScore: number;
+    tailoredScore: number;
+    improvement: number;
     breakdown: ScoreBreakdown;
-    afterBreakdown: ScoreBreakdown;
 }
