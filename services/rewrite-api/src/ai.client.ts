@@ -1,190 +1,178 @@
 /**
  * @file services/rewrite-api/src/ai.client.ts
- * @generated-by Antigravity AI assistant — chunk 4 (rewrite-api implementation)
- * @command "Design and implement the rewrite-api with ai.client.ts"
+ * @generated-by Antigravity AI assistant — chunk 15 (production rebuild)
  *
- * Anti-fabrication guarantee:
- *   1. verifyNoHallucinations() — code-level digit-set comparison between
- *      original context and AI output; rejects any bullet introducing a new number.
- *   2. generateFallback() — returns the original bullet with confidence=20
- *      when verification fails or the AI call errors.
- *   AI is ONLY used for: bullet rewrites + short explanations (<30 words).
- *   Parsing and scoring are fully deterministic (no AI).
+ * AI client for rewrite-api.
+ * Uses @google/generative-ai SDK with gemini-2.5-flash.
+ *
+ * Anti-fabrication guarantee (code-level, not prompt-only):
+ *   extractDigits() collects every number from the original bullet.
+ *   verifyDigits() checks that no NEW number appears in the AI output.
+ *   On digit mismatch → retries once.
+ *   If still invalid after MAX_RETRIES → returns original bullet with confidence=30.
+ *
+ * Features:
+ *   - 20-second timeout per call via Promise.race
+ *   - Max 2 retries with exponential back-off
+ *   - JSON fence stripping + strict parse
+ *   - Quota (429) surfaced as ApiError
  */
-import { GoogleGenAI } from '@google/genai';
-import pLimit from 'p-limit';
-import crypto from 'crypto';
-import { RewriteRequest, RewriteResponse, REWRITE_SYSTEM_PROMPT, ExplainRequest, ExplainResponse, EXPLAIN_SYSTEM_PROMPT } from './schema.js';
 
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { RewriteRequest, RewriteResponse, REWRITE_SYSTEM_PROMPT } from './schema';
+
+const TIMEOUT_MS = 20_000;
+const MAX_RETRIES = 2;
+const FALLBACK_CONFIDENCE = 30;
+
+// ── Structured error ──────────────────────────────────────────────────────────
+export class ApiError extends Error {
+    constructor(message: string, public readonly statusCode: number) {
+        super(message);
+        this.name = 'ApiError';
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new ApiError(`Gemini request timed out after ${ms}ms`, 504)), ms)
+    );
+    return Promise.race([promise, timeout]);
+}
+
+function isQuotaError(err: unknown): boolean {
+    if (err instanceof Error) {
+        return err.message.includes('429') || err.message.toLowerCase().includes('quota');
+    }
+    return false;
+}
+
+function stripJsonFences(raw: string): string {
+    const m = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    return m ? m[1] : raw;
+}
+
+/**
+ * Extract all digit sequences from a string.
+ * "Reduced latency 40% across 3 regions" → ["40", "3"]
+ */
+function extractDigits(text: string): Set<string> {
+    return new Set((text.match(/\d+/g) ?? []));
+}
+
+/**
+ * Returns true if the rewritten bullet introduces a new number
+ * not present in the original bullet.
+ */
+function hasInventedDigits(original: string, rewritten: string): boolean {
+    const origDigits = extractDigits(original);
+    const rewriteDigits = extractDigits(rewritten);
+    for (const d of rewriteDigits) {
+        if (!origDigits.has(d)) return true;
+    }
+    return false;
+}
+
+// ── AI Client ─────────────────────────────────────────────────────────────────
 export class AIClient {
-    private ai: GoogleGenAI;
-
-    // Rate limiter: Max 3 concurrent LLM rewrite requests locally
-    private limit = pLimit(3);
-    private explainCache = new Map<string, string>();
+    private readonly model;
 
     constructor() {
-        // Per-service key takes precedence; falls back to shared GEMINI_API_KEY for dev convenience.
-        const apiKey = process.env.REWRITE_GEMINI_API_KEY
-            || process.env.GEMINI_API_KEY
-            || 'test-key';
-        this.ai = new GoogleGenAI({ apiKey });
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+            throw new Error('[rewrite-api] GEMINI_API_KEY is not set. Add it to your .env file.');
+        }
+        const genAI = new GoogleGenerativeAI(apiKey);
+        this.model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: REWRITE_SYSTEM_PROMPT,
+        });
     }
 
-    private hashPayload(req: ExplainRequest): string {
-        const raw = `${req.originalBullet}|${req.rewrittenBullet}|${req.jdKeywords.join(',')}`;
-        return crypto.createHash('sha256').update(raw).digest('hex');
-    }
+    private async callGemini(prompt: string): Promise<RewriteResponse> {
+        const genResult = await withTimeout(
+            this.model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: 'application/json' },
+            }),
+            TIMEOUT_MS
+        );
+        const rawText = await genResult.response.text();
 
-    /**
-     * Extracts solely digit characters from a string.
-     */
-    private extractDigits(text: string): string[] {
-        if (!text) return [];
-        const matches = text.match(/\d+/g);
-        return matches ? matches : [];
-    }
+        const cleaned = stripJsonFences(rawText);
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch {
+            throw new Error(`Invalid JSON from Gemini: ${cleaned.slice(0, 200)}`);
+        }
 
-    /**
-     * Generates a safe programmatic fallback if validation fails.
-     */
-    private generateFallback(req: RewriteRequest): RewriteResponse {
-        // Simple template: "Executed [role] tasks at [company] including [originalBullet]"
-        const safeAction = req.originalBullet.trim() || 'Contributed to operations';
-        let rewritten = safeAction;
-
-        // Ensuring it starts cleanly
-        if (/^[a-zA-Z]/.test(rewritten)) {
-            rewritten = rewritten.charAt(0).toUpperCase() + rewritten.slice(1);
+        if (
+            typeof parsed !== 'object' ||
+            parsed === null ||
+            typeof (parsed as Record<string, unknown>).rewritten !== 'string' ||
+            typeof (parsed as Record<string, unknown>).confidence !== 'number'
+        ) {
+            throw new Error('Gemini response missing required fields (rewritten, confidence)');
         }
 
         return {
-            rewritten: rewritten,
-            explanation: "Fallback applied due to safety constraints.",
-            confidence: 20
+            rewritten: ((parsed as Record<string, unknown>).rewritten as string).trim(),
+            confidence: Math.max(0, Math.min(100, Math.round((parsed as Record<string, unknown>).confidence as number))),
         };
     }
 
-    private verifyNoHallucinations(req: RewriteRequest, res: RewriteResponse): boolean {
-        if (!res.rewritten) return false;
+    async rewriteBullet(req: RewriteRequest): Promise<RewriteResponse> {
+        const prompt = `Original bullet: "${req.originalBullet}"
+JD keywords: ${JSON.stringify(req.jdKeywords)}
 
-        const originalDigits = new Set([
-            ...this.extractDigits(req.originalBullet),
-            ...this.extractDigits(req.resumeContext.company),
-            ...this.extractDigits(req.resumeContext.role),
-            ...this.extractDigits(req.resumeContext.dates),
-            ...req.resumeContext.otherBullets.flatMap(b => this.extractDigits(b))
-        ]);
+Rewrite the bullet following the system rules.`;
 
-        const newDigits = this.extractDigits(res.rewritten);
+        let lastError: Error = new Error('Unknown error');
 
-        // Check if AI invented a number not present in the provided context
-        for (const num of newDigits) {
-            if (!originalDigits.has(num)) {
-                console.warn(`[REWRITE DETECTED HALLUCINATION]: Invented number '${num}' in rewriting '${req.originalBullet}'`);
-                return false; // Fails strict constraint
-            }
-        }
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const result = await this.callGemini(prompt);
 
-        return true;
-    }
-
-    private async executeGenerate(req: RewriteRequest): Promise<RewriteResponse> {
-        const payload = JSON.stringify(req, null, 2);
-
-        try {
-            const response = await this.ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [
-                    { role: 'user', parts: [{ text: payload }] }
-                ],
-                config: {
-                    systemInstruction: REWRITE_SYSTEM_PROMPT,
-                    responseMimeType: 'application/json'
+                // ── Anti-fabrication check ─────────────────────────────────────────
+                if (hasInventedDigits(req.originalBullet, result.rewritten)) {
+                    console.warn(
+                        `[rewrite-api] Hallucinated digit detected (attempt ${attempt + 1}).` +
+                        ` Original: "${req.originalBullet}" → Rewritten: "${result.rewritten}"`
+                    );
+                    if (attempt < MAX_RETRIES) {
+                        await sleep(1000 * (attempt + 1));
+                        continue; // retry
+                    }
+                    // Final attempt still hallucinated → fallback
+                    console.warn('[rewrite-api] Falling back to original bullet after digit hallucination.');
+                    return { rewritten: req.originalBullet, confidence: FALLBACK_CONFIDENCE };
                 }
-            });
 
-            const rawJson = response.text;
-            if (!rawJson) throw new Error("Empty AI response");
+                return result;
+            } catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
 
-            let parsed: any;
-            try {
-                parsed = JSON.parse(rawJson);
-            } catch (e) {
-                const match = rawJson.match(/```json\n([\s\S]*?)\n```/);
-                if (match) parsed = JSON.parse(match[1]);
-                else throw new Error("Failed to parse JSON schema");
+                if (isQuotaError(err)) {
+                    throw new ApiError('Gemini API quota exceeded. Check your billing or wait before retrying.', 429);
+                }
+
+                if (attempt < MAX_RETRIES) {
+                    const backoff = 1000 * (attempt + 1);
+                    console.warn(`[rewrite-api] Attempt ${attempt + 1} failed: ${lastError.message}. Retrying in ${backoff}ms…`);
+                    await sleep(backoff);
+                }
             }
-
-            const generated: RewriteResponse = {
-                rewritten: parsed.rewritten || req.originalBullet,
-                explanation: parsed.explanation || "",
-                confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0
-            };
-
-            // strict local verification
-            if (!this.verifyNoHallucinations(req, generated)) {
-                return this.generateFallback(req);
-            }
-
-            return generated;
-        } catch (err: any) {
-            console.error('Rewrite AI Error:', err);
-            return this.generateFallback(req);
-        }
-    }
-
-    public async rewriteBullet(req: RewriteRequest): Promise<RewriteResponse> {
-        if (!req.originalBullet || req.originalBullet.trim() === '') {
-            throw new Error("originalBullet cannot be empty");
         }
 
-        // Pass the execution into the concurrency throttler.
-        return this.limit(() => this.executeGenerate(req));
-    }
-
-    public async generateExplanation(req: ExplainRequest): Promise<ExplainResponse> {
-        if (!req.originalBullet || !req.rewrittenBullet) {
-            throw new Error("Both original and rewritten bullets are required.");
-        }
-
-        const hashId = this.hashPayload(req);
-        if (this.explainCache.has(hashId)) {
-            return { rationale: this.explainCache.get(hashId)! };
-        }
-
-        const payload = JSON.stringify(req, null, 2);
-
-        try {
-            const response = await this.limit(async () => {
-                return await this.ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: [{ role: 'user', parts: [{ text: payload }] }],
-                    config: { systemInstruction: EXPLAIN_SYSTEM_PROMPT, responseMimeType: 'application/json' }
-                });
-            });
-
-            const rawJson = response.text;
-            if (!rawJson) throw new Error("Empty explanation");
-
-            let parsed: any;
-            try {
-                parsed = JSON.parse(rawJson);
-            } catch (e) {
-                const match = rawJson.match(/```json\n([\s\S]*?)\n```/);
-                if (match) parsed = JSON.parse(match[1]);
-                else throw new Error("Failed JSON parsing for explain");
-            }
-
-            const rationale = parsed.rationale || "Rewritten to better align with requested metrics and required keywords.";
-
-            this.explainCache.set(hashId, rationale);
-            return { rationale };
-
-        } catch (err: any) {
-            console.error('Explanation AI Error:', err);
-            return { rationale: "Rewritten to feature stronger context matching the job description constraints." };
-        }
+        // All retries exhausted — return safe fallback
+        console.warn('[rewrite-api] All retries exhausted. Returning original bullet.');
+        return { rewritten: req.originalBullet, confidence: FALLBACK_CONFIDENCE };
     }
 }
 

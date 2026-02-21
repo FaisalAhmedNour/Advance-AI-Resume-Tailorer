@@ -1,202 +1,120 @@
-import { JDSchema, ResumeSchema, ScoreBreakdown, ScoreRequest, ScoreResponse } from './schema.js';
+/**
+ * @file services/scoring-api/src/scoring.service.ts
+ * @generated-by Antigravity AI assistant — chunk 15 (production rebuild)
+ *
+ * Deterministic ATS-simulation scoring. No AI usage.
+ *
+ * Algorithm:
+ *   1. Required skill coverage  (40% weight) — exact + normalised match
+ *   2. Preferred skill coverage (15% weight) — exact + normalised match
+ *   3. Keyword coverage         (25% weight) — substring match across full résumé text
+ *   4. Jaccard semantic sim.    (20% weight) — token overlap across résumé vs JD text
+ */
 
-const SYNONYM_MAP: Record<string, string> = {
-    // A subset of standard IT mappings to ensure intersection logic holds
-    javascript: 'javascript', js: 'javascript',
-    typescript: 'typescript', ts: 'typescript',
-    node: 'node.js', nodejs: 'node.js', 'node.js': 'node.js',
-    react: 'react', reactjs: 'react', 'react.js': 'react',
-    python: 'python', py: 'python',
-    java: 'java',
-    csharp: 'c#', 'c#': 'c#',
-    cpp: 'c++', 'c++': 'c++',
-    go: 'go', golang: 'go',
-    aws: 'aws', amazonwebservices: 'aws',
-    gcp: 'gcp', googlecloud: 'gcp',
-    azure: 'azure',
-    docker: 'docker',
-    kubernetes: 'kubernetes', k8s: 'kubernetes',
-    html: 'html', html5: 'html',
-    css: 'css', css3: 'css',
-    ci: 'ci/cd', cd: 'ci/cd', cicd: 'ci/cd', 'ci/cd': 'ci/cd'
-};
+import { ResumeData, JDData, ScoreResponse, ScoreBreakdown } from './types';
 
-export class ScoringService {
-
-    /**
-     * Normalizes text arrays into strictly cleaned Sets for intersection matching
-     */
-    private normalizeText(text: string): string {
-        return (text || '').toLowerCase().replace(/[^a-z0-9+#.\-]/g, '');
-    }
-
-    private normalizeSkillsToSet(skills: string[]): Set<string> {
-        const set = new Set<string>();
-        for (const s of skills) {
-            const clean = this.normalizeText(s);
-            set.add(SYNONYM_MAP[clean] || clean); // map to base mapping if available
-        }
-        return set;
-    }
-
-    /**
-     * Extracts ALL text recursively from Resume for broad searching
-     */
-    private extractAllResumeText(resume: ResumeSchema, mutatedBullets?: Map<string, string>): string {
-        const chunks: string[] = [];
-
-        // 1. Grab declared skills
-        if (resume.skills) {
-            chunks.push(...(resume.skills.languages || []));
-            chunks.push(...(resume.skills.frameworks || []));
-            chunks.push(...(resume.skills.tools || []));
-            chunks.push(...(resume.skills.softSkills || []));
-        }
-
-        // 2. Grab Experience Bullets, potentially swapped for the 'After' score calculation
-        if (resume.experience) {
-            for (const exp of resume.experience) {
-                for (const bullet of (exp.bullets || [])) {
-                    if (mutatedBullets && mutatedBullets.has(bullet)) {
-                        chunks.push(mutatedBullets.get(bullet)!);
-                    } else {
-                        chunks.push(bullet);
-                    }
-                }
-            }
-        }
-
-        // 3. Grab Project bodies
-        if (resume.projects) {
-            for (const proj of resume.projects) {
-                if (proj.description) chunks.push(proj.description);
-                if (proj.technologies) chunks.push(...proj.technologies);
-            }
-        }
-
-        return chunks.map(c => this.normalizeText(c)).join(' ');
-    }
-
-    private calculateCoverage(jdSkills: string[], resumeSuperString: string): number {
-        if (!jdSkills || jdSkills.length === 0) return 1.0; // 100% since none required
-
-        const targetSet = this.normalizeSkillsToSet(jdSkills);
-        let matches = 0;
-
-        targetSet.forEach(target => {
-            // Look for the exact normalized keyword blob inside the massive resume chunk
-            // Note: using regex boundaries if it's alphanumeric
-            const safeTarget = target.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-            const regex = new RegExp(safeTarget, 'i');
-            if (regex.test(resumeSuperString)) {
-                matches++;
-            }
-        });
-
-        return matches / targetSet.size;
-    }
-
-    /**
-     * Approximates semantic similarity via Jaccard Overlap of Tokens
-     */
-    private calculateJaccardSimilarity(jdResponsibilities: string[], resumeSuperString: string): number {
-        if (!jdResponsibilities || jdResponsibilities.length === 0) return 0.8; // default baseline
-
-        const jdTokens = new Set<string>();
-        jdResponsibilities.forEach(resp => {
-            const words = resp.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(' ');
-            words.forEach(w => jdTokens.add(w));
-        });
-
-        const stops = new Set(['and', 'the', 'to', 'of', 'in', 'for', 'with', 'on', 'at', 'by', 'an', 'a']);
-        stops.forEach(s => jdTokens.delete(s)); // trim stopwords artificially padding score
-
-        if (jdTokens.size === 0) return 0.8;
-
-        let intersection = 0;
-        jdTokens.forEach(t => {
-            if (resumeSuperString.includes(t)) intersection++;
-        });
-
-        return Math.min(1.0, intersection / jdTokens.size + 0.2); // +20% bump baseline for ATS approximation
-    }
-
-    /**
-     * Determines if user arbitrarily switches date formats across resume blocks
-     */
-    private calculateFormatPenalty(resume: ResumeSchema): number {
-        const dateStrings: string[] = [];
-        let hasSlashes = false;
-        let hasWords = false;
-
-        const pushDate = (val: string | null) => { if (val) dateStrings.push(val); }
-
-        (resume.education || []).forEach(e => pushDate(e.graduationDate));
-        (resume.experience || []).forEach(e => { pushDate(e.startDate); pushDate(e.endDate); });
-
-        for (const ds of dateStrings) {
-            const lowerDs = ds.toLowerCase();
-            if (lowerDs === 'present' || lowerDs === 'current') continue; // Standard ATS syntax
-
-            if (/\//.test(ds)) hasSlashes = true; // MM/YYYY
-            if (/[a-zA-Z]/.test(ds)) hasWords = true; // Jan 2020
-        }
-
-        // Penalty applies if both syntaxes are actively mixed randomly
-        if (hasSlashes && hasWords && dateStrings.length > 2) {
-            return -0.05; // -5% Match Penalty
-        }
-        return 0;
-    }
-
-    private computeRawScore(breakdown: ScoreBreakdown): number {
-        // Weights:
-        // 45% Required Skills
-        // 25% Preferred Skills
-        // 30% Semantic Similarity (Responsibilities Match)
-        const base = (breakdown.requiredCoverage * 0.45)
-            + (breakdown.preferredCoverage * 0.25)
-            + (breakdown.semanticSimilarity * 0.30);
-
-        const scoreFloat = base + breakdown.formatPenalty;
-        const scoreCapped = Math.max(0, Math.min(1.0, scoreFloat));
-
-        return Math.round(scoreCapped * 100);
-    }
-
-    public calculateAtsScore(req: ScoreRequest): ScoreResponse {
-        // 1. Process "Before" Score (No rewritten bullets)
-        const beforeStr = this.extractAllResumeText(req.resume);
-
-        const beforeBreakdown: ScoreBreakdown = {
-            requiredCoverage: this.calculateCoverage(req.jd.requiredSkills, beforeStr),
-            preferredCoverage: this.calculateCoverage(req.jd.preferredSkills, beforeStr),
-            semanticSimilarity: this.calculateJaccardSimilarity(req.jd.responsibilities, beforeStr),
-            formatPenalty: this.calculateFormatPenalty(req.resume)
-        };
-
-        // 2. Process "After" Score (Swapping original text for rewritten strings)
-        const mutationMap = new Map<string, string>();
-        for (const rep of (req.rewrittenBullets || [])) {
-            mutationMap.set(rep.original, rep.rewritten);
-        }
-
-        const afterStr = this.extractAllResumeText(req.resume, mutationMap);
-
-        const afterBreakdown: ScoreBreakdown = {
-            requiredCoverage: this.calculateCoverage(req.jd.requiredSkills, afterStr),
-            preferredCoverage: this.calculateCoverage(req.jd.preferredSkills, afterStr),
-            semanticSimilarity: this.calculateJaccardSimilarity(req.jd.responsibilities, afterStr),
-            formatPenalty: beforeBreakdown.formatPenalty // penalty is static formatting
-        };
-
-        return {
-            beforeScore: this.computeRawScore(beforeBreakdown),
-            afterScore: this.computeRawScore(afterBreakdown),
-            breakdown: beforeBreakdown,
-            afterBreakdown: afterBreakdown
-        };
-    }
+// ── Normalisation ─────────────────────────────────────────────────────────────
+function normalise(s: string): string {
+    return s.toLowerCase().replace(/[^a-z0-9+#.]/g, '');
 }
 
-export const scoringService = new ScoringService();
+function resumeTextBlob(resume: ResumeData): string {
+    const parts: string[] = [];
+    const s = resume.skills ?? {};
+    parts.push(...(s.languages ?? []), ...(s.frameworks ?? []), ...(s.tools ?? []), ...(s.other ?? []));
+    for (const exp of resume.experience ?? []) {
+        if (exp.role) parts.push(exp.role);
+        if (exp.company) parts.push(exp.company);
+        parts.push(...(exp.bullets ?? []));
+    }
+    for (const edu of resume.education ?? []) {
+        if (edu.degree) parts.push(edu.degree);
+        if (edu.field) parts.push(edu.field);
+    }
+    if (resume.summary) parts.push(resume.summary);
+    return parts.join(' ').toLowerCase();
+}
+
+function jdTextBlob(jd: JDData): string {
+    return [
+        ...(jd.requiredSkills ?? []),
+        ...(jd.preferredSkills ?? []),
+        ...(jd.keywords ?? []),
+        ...(jd.responsibilities ?? []),
+    ].join(' ').toLowerCase();
+}
+
+// ── Matching helpers ──────────────────────────────────────────────────────────
+function skillMatch(skill: string, blob: string): boolean {
+    const norm = normalise(skill);
+    return blob.includes(norm) || blob.includes(normalise(skill.toLowerCase()));
+}
+
+function computeCoverage(
+    skills: string[],
+    resumeBlob: string
+): { matched: string[]; missing: string[]; ratio: number } {
+    if (skills.length === 0) {
+        return { matched: [], missing: [], ratio: 1 };
+    }
+    const matched: string[] = [];
+    const missing: string[] = [];
+    for (const skill of skills) {
+        if (skillMatch(skill, resumeBlob)) {
+            matched.push(skill);
+        } else {
+            missing.push(skill);
+        }
+    }
+    return { matched, missing, ratio: matched.length / skills.length };
+}
+
+function jaccardSimilarity(textA: string, textB: string): number {
+    const setA = new Set(textA.split(/\s+/).filter(t => t.length > 2));
+    const setB = new Set(textB.split(/\s+/).filter(t => t.length > 2));
+    if (setA.size === 0 && setB.size === 0) return 1;
+    if (setA.size === 0 || setB.size === 0) return 0;
+    const intersection = [...setA].filter(t => setB.has(t)).length;
+    const union = new Set([...setA, ...setB]).size;
+    return intersection / union;
+}
+
+function keywordCoverage(keywords: string[], resumeBlob: string): number {
+    if (keywords.length === 0) return 1;
+    const hits = keywords.filter(kw => resumeBlob.includes(normalise(kw))).length;
+    return hits / keywords.length;
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+export function scoreResume(resume: ResumeData, jd: JDData): ScoreResponse {
+    const resumeBlob = normalise(resumeTextBlob(resume));
+    const jdBlob = normalise(jdTextBlob(jd));
+
+    const req = computeCoverage(jd.requiredSkills ?? [], resumeBlob);
+    const pref = computeCoverage(jd.preferredSkills ?? [], resumeBlob);
+    const kwCov = keywordCoverage(jd.keywords ?? [], resumeBlob);
+    const jaccard = jaccardSimilarity(resumeBlob, jdBlob);
+
+    const breakdown: ScoreBreakdown = {
+        requiredCoverage: Math.round(req.ratio * 1000) / 1000,
+        preferredCoverage: Math.round(pref.ratio * 1000) / 1000,
+        keywordCoverage: Math.round(kwCov * 1000) / 1000,
+        semanticSimilarity: Math.round(jaccard * 1000) / 1000,
+    };
+
+    const overallScore = Math.round(
+        breakdown.requiredCoverage * 40 +
+        breakdown.preferredCoverage * 15 +
+        breakdown.keywordCoverage * 25 +
+        breakdown.semanticSimilarity * 20
+    );
+
+    return {
+        overallScore,
+        beforeScore: overallScore,
+        breakdown,
+        matchedRequired: req.matched,
+        matchedPreferred: pref.matched,
+        missingRequired: req.missing,
+    };
+}

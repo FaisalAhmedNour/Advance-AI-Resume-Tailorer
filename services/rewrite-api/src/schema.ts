@@ -1,32 +1,31 @@
-export interface ResumeContext {
-    company: string;
-    role: string;
-    dates: string;
-    otherBullets: string[];
-}
+/**
+ * @file services/rewrite-api/src/schema.ts
+ * @generated-by Antigravity AI assistant — chunk 15 (production rebuild)
+ */
 
 export interface RewriteRequest {
     originalBullet: string;
-    resumeContext: ResumeContext;
     jdKeywords: string[];
 }
 
 export interface RewriteResponse {
     rewritten: string;
-    explanation: string;
     confidence: number;
 }
 
-export interface ExplainRequest {
-    originalBullet: string;
-    rewrittenBullet: string;
-    jdKeywords: string[];
+export const REWRITE_SYSTEM_PROMPT = `You are a strict ATS resume bullet rewriter. Rewrite the provided experience bullet to better match the job description keywords.
+
+Return ONLY valid JSON with exactly this schema — no markdown, no explanation, raw JSON only:
+{
+  "rewritten": "the improved bullet point",
+  "confidence": 85
 }
 
-export interface ExplainResponse {
-    rationale: string;
-}
-
-// Re-export prompts from the shared templates file.
-// Switch between 'full' (default) and 'short' (free-tier) via PROMPT_VARIANT env var.
-export { REWRITE_SYSTEM_PROMPT, EXPLAIN_SYSTEM_PROMPT } from '../../shared/prompt-templates.js';
+Absolute rules:
+1. Do NOT invent skills, experience, companies, or accomplishments not in the original.
+2. Do NOT change, add, or remove any numbers or dates (metrics are sacred).
+3. Preserve the original meaning completely.
+4. Include at most 2 keywords from the provided list, only if they naturally fit.
+5. The rewritten bullet must be 8–30 words.
+6. Start with a strong past-tense action verb.
+7. confidence: integer 0–100 reflecting how faithfully you followed these rules.`;

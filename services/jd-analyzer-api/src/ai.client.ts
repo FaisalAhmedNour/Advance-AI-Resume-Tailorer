@@ -1,277 +1,153 @@
 /**
  * @file services/jd-analyzer-api/src/ai.client.ts
- * @generated-by Antigravity AI assistant — chunk 3 (jd-analyzer-api implementation)
- * @command "Design and implement the jd-analyzer-api with Gemini JD extraction"
+ * @generated-by Antigravity AI assistant — chunk 15 (production rebuild)
  *
- * AI use scope: JD text extraction ONLY.
- *   - Input chunked at 5,000 chars (~1,200 tokens); results merged deterministically.
- *   - Output cached by SHA-256(jdText) — same JD never costs a second API call.
- *   - Reads JD_ANALYZER_GEMINI_API_KEY (falls back to GEMINI_API_KEY for dev).
+ * AI client for jd-analyzer-api.
+ * Uses @google/generative-ai SDK with gemini-2.5-flash.
+ *
+ * Features:
+ *   - 20-second request timeout via Promise.race
+ *   - Max 2 retries with exponential back-off
+ *   - JSON schema validation after each attempt
+ *   - On first JSON parse failure: retries with stricter suffix prompt
+ *   - Quota error (429) surfaced as structured ApiError
+ *   - SHA-256 in-memory cache: same JD never costs a second API call
  */
-import { GoogleGenAI } from '@google/genai';
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import crypto from 'crypto';
-import { JDSchema, JD_SYSTEM_PROMPT, Seniority } from './schema.js';
+import { JDSchema, JD_SYSTEM_PROMPT, JD_RETRY_PROMPT_SUFFIX } from './schema';
 
-// Approx ~300 common tech skills synonym normalization map
-const SYNONYM_MAP: Record<string, string> = {
-    javascript: 'JavaScript', js: 'JavaScript',
-    typescript: 'TypeScript', ts: 'TypeScript',
-    node: 'Node.js', nodejs: 'Node.js',
-    react: 'React', reactjs: 'React',
-    python: 'Python', py: 'Python',
-    java: 'Java',
-    csharp: 'C#', 'c#': 'C#',
-    cpp: 'C++', 'c++': 'C++',
-    go: 'Go', golang: 'Go',
-    ruby: 'Ruby',
-    php: 'PHP',
-    swift: 'Swift',
-    kotlin: 'Kotlin',
-    rust: 'Rust',
-    sql: 'SQL', mysql: 'MySQL', postgres: 'PostgreSQL', postgresql: 'PostgreSQL',
-    nosql: 'NoSQL', mongodb: 'MongoDB', mongo: 'MongoDB',
-    aws: 'AWS', amazonwebservices: 'AWS',
-    gcp: 'GCP', googlecloud: 'GCP',
-    azure: 'Azure',
-    docker: 'Docker',
-    kubernetes: 'Kubernetes', k8s: 'Kubernetes',
-    git: 'Git',
-    linux: 'Linux',
-    html: 'HTML', html5: 'HTML',
-    css: 'CSS', css3: 'CSS',
-    tailwind: 'Tailwind CSS', tailwindcss: 'Tailwind CSS',
-    sass: 'Sass', scss: 'Sass',
-    less: 'Less',
-    graphql: 'GraphQL', gql: 'GraphQL',
-    rest: 'REST', restapi: 'REST API',
-    vue: 'Vue.js', vuejs: 'Vue.js',
-    angular: 'Angular',
-    svelte: 'Svelte',
-    nextjs: 'Next.js', next: 'Next.js',
-    nestjs: 'NestJS', nest: 'NestJS',
-    express: 'Express', expressjs: 'Express',
-    django: 'Django',
-    flask: 'Flask',
-    spring: 'Spring Boot', springboot: 'Spring Boot',
-    laravel: 'Laravel',
-    aspnet: 'ASP.NET',
-    dotnet: '.NET',
-    unity: 'Unity',
-    unreal: 'Unreal Engine',
-    tensorflow: 'TensorFlow', tf: 'TensorFlow',
-    pytorch: 'PyTorch',
-    pandas: 'Pandas',
-    numpy: 'NumPy',
-    scikitlearn: 'Scikit-Learn',
-    ci: 'CI/CD', cd: 'CI/CD', cicd: 'CI/CD',
-    jenkins: 'Jenkins',
-    githubactions: 'GitHub Actions',
-    gitlabci: 'GitLab CI',
-    terraform: 'Terraform',
-    ansible: 'Ansible',
-    chef: 'Chef',
-    puppet: 'Puppet',
-    agile: 'Agile', scrum: 'Scrum', kanban: 'Kanban',
-    jira: 'Jira',
-    confluence: 'Confluence',
-    redis: 'Redis',
-    memcached: 'Memcached',
-    elasticsearch: 'Elasticsearch',
-    kafka: 'Kafka',
-    rabbitmq: 'RabbitMQ',
-    nginx: 'Nginx',
-    apache: 'Apache',
-    bash: 'Bash', shell: 'Shell Scripting',
-    powershell: 'PowerShell',
-    figma: 'Figma',
-    sketch: 'Sketch',
-    adobexd: 'Adobe XD',
-    photoshop: 'Photoshop',
-    illustrator: 'Illustrator'
-};
+const TIMEOUT_MS = 20_000;
+const MAX_RETRIES = 2;
 
-export class AIClient {
-    private ai: GoogleGenAI;
-    private cache: Map<string, JDSchema>;
-    private readonly TOKEN_CHUNK_THRESHOLD = 5000; // rough char count approx for 1200 words/tokens
-
-    constructor() {
-        // Per-service key takes precedence; falls back to shared GEMINI_API_KEY for dev convenience.
-        const apiKey = process.env.JD_ANALYZER_GEMINI_API_KEY
-            || process.env.GEMINI_API_KEY
-            || 'test-key';
-        this.ai = new GoogleGenAI({ apiKey });
-        this.cache = new Map<string, JDSchema>();
-    }
-
-    private generateHash(text: string): string {
-        return crypto.createHash('sha256').update(text).digest('hex');
-    }
-
-    private normalizeSkills(skills: string[]): string[] {
-        if (!skills || !Array.isArray(skills)) return [];
-
-        const normalized = new Set<string>();
-        for (const skill of skills) {
-            if (typeof skill !== 'string') continue;
-            const clean = skill.trim().toLowerCase().replace(/\s+/g, '');
-            if (SYNONYM_MAP[clean]) {
-                normalized.add(SYNONYM_MAP[clean]);
-            } else {
-                // Fallback to original, just trimmed
-                normalized.add(skill.trim());
-            }
-        }
-        return Array.from(normalized);
-    }
-
-    private async callGemini(text: string): Promise<JDSchema> {
-        try {
-            const response = await this.ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [
-                    { role: 'user', parts: [{ text: text }] }
-                ],
-                config: {
-                    systemInstruction: JD_SYSTEM_PROMPT,
-                    responseMimeType: 'application/json'
-                }
-            });
-
-            const rawJson = response.text;
-            if (!rawJson) throw new Error("Empty AI response");
-
-            let parsed: any;
-            try {
-                parsed = JSON.parse(rawJson);
-            } catch (e) {
-                // Attempt to extract JSON from markdown fences if the model failed strict JSON enforcement
-                const match = rawJson.match(/```json\n([\s\S]*?)\n```/);
-                if (match) parsed = JSON.parse(match[1]);
-                else throw new Error("Failed to parse JSON schema");
-            }
-
-            // Ensure Schema Default Strict Conformity
-            return {
-                title: parsed.title || null,
-                seniority: parsed.seniority || null,
-                requiredSkills: this.normalizeSkills(parsed.requiredSkills || []),
-                preferredSkills: this.normalizeSkills(parsed.preferredSkills || []),
-                softSkills: Array.isArray(parsed.softSkills) ? parsed.softSkills : [],
-                responsibilities: Array.isArray(parsed.responsibilities) ? parsed.responsibilities : [],
-                keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
-                yearsExperience: {
-                    min: typeof parsed.yearsExperience?.min === 'number' ? parsed.yearsExperience.min : null,
-                    max: typeof parsed.yearsExperience?.max === 'number' ? parsed.yearsExperience.max : null
-                }
-            };
-        } catch (err: any) {
-            console.error('Gemini API Error:', err);
-            throw new Error(`AI Extraction Failed: ${err.message}`);
-        }
-    }
-
-    private chunkText(text: string): string[] {
-        if (text.length <= this.TOKEN_CHUNK_THRESHOLD) return [text];
-
-        // Very naive rough text chunker 
-        const chunks: string[] = [];
-        let currentIdx = 0;
-        while (currentIdx < text.length) {
-            let slice = text.substring(currentIdx, currentIdx + this.TOKEN_CHUNK_THRESHOLD);
-            // Try to break on a newline to not sever words/JSON
-            if (currentIdx + this.TOKEN_CHUNK_THRESHOLD < text.length) {
-                const lastNewline = slice.lastIndexOf('\n');
-                if (lastNewline > this.TOKEN_CHUNK_THRESHOLD * 0.8) {
-                    slice = slice.substring(0, lastNewline);
-                    currentIdx += lastNewline + 1;
-                    chunks.push(slice);
-                    continue;
-                }
-            }
-            chunks.push(slice);
-            currentIdx += this.TOKEN_CHUNK_THRESHOLD;
-        }
-        return chunks;
-    }
-
-    private mergeChunks(results: JDSchema[]): JDSchema {
-        if (results.length === 0) return this.getEmptySchema();
-        if (results.length === 1) return results[0];
-
-        const merged = this.getEmptySchema();
-        merged.title = results.find(r => r.title)?.title || null;
-        merged.seniority = results.find(r => r.seniority)?.seniority || null;
-
-        const reqSet = new Set<string>();
-        const prefSet = new Set<string>();
-        const softSet = new Set<string>();
-        const respSet = new Set<string>();
-        const keySet = new Set<string>();
-
-        let minYears: number | null = null;
-        let maxYears: number | null = null;
-
-        for (const res of results) {
-            res.requiredSkills.forEach(s => reqSet.add(s));
-            res.preferredSkills.forEach(s => prefSet.add(s));
-            res.softSkills.forEach(s => softSet.add(s));
-            res.responsibilities.forEach(s => respSet.add(s));
-            res.keywords.forEach(s => keySet.add(s));
-
-            if (res.yearsExperience.min !== null) {
-                if (minYears === null || res.yearsExperience.min < minYears) minYears = res.yearsExperience.min;
-            }
-            if (res.yearsExperience.max !== null) {
-                if (maxYears === null || res.yearsExperience.max > maxYears) maxYears = res.yearsExperience.max;
-            }
-        }
-
-        merged.requiredSkills = Array.from(reqSet);
-        merged.preferredSkills = Array.from(prefSet);
-        merged.softSkills = Array.from(softSet);
-        merged.responsibilities = Array.from(respSet);
-        merged.keywords = Array.from(keySet);
-        merged.yearsExperience = { min: minYears, max: maxYears };
-
-        return merged;
-    }
-
-    private getEmptySchema(): JDSchema {
-        return {
-            title: null,
-            seniority: null,
-            requiredSkills: [],
-            preferredSkills: [],
-            softSkills: [],
-            responsibilities: [],
-            keywords: [],
-            yearsExperience: { min: null, max: null }
-        };
-    }
-
-    public async analyzeJD(text: string): Promise<JDSchema> {
-        if (!text || text.trim() === '') {
-            throw new Error("JD text cannot be empty");
-        }
-
-        const hash = this.generateHash(text);
-        if (this.cache.has(hash)) {
-            console.log('Returning from cache...', hash.substring(0, 8));
-            return this.cache.get(hash)!;
-        }
-
-        // Process Chunks Concurrently
-        const chunks = this.chunkText(text);
-        const chunkPromises = chunks.map(chunk => this.callGemini(chunk));
-
-        const results = await Promise.all(chunkPromises);
-        const finalSchema = this.mergeChunks(results);
-
-        this.cache.set(hash, finalSchema);
-        return finalSchema;
+// ── Structured error ──────────────────────────────────────────────────────────
+export class ApiError extends Error {
+    constructor(message: string, public readonly statusCode: number) {
+        super(message);
+        this.name = 'ApiError';
     }
 }
 
-// Export singleton
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new ApiError(`Gemini request timed out after ${ms}ms`, 504)), ms)
+    );
+    return Promise.race([promise, timeout]);
+}
+
+function isQuotaError(err: unknown): boolean {
+    if (err instanceof Error) {
+        return err.message.includes('429') || err.message.toLowerCase().includes('quota');
+    }
+    return false;
+}
+
+function stripJsonFences(raw: string): string {
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    return fenceMatch ? fenceMatch[1] : raw;
+}
+
+function validateAndNormalise(parsed: Record<string, unknown>): JDSchema {
+    return {
+        title: typeof parsed.title === 'string' ? parsed.title : null,
+        seniority: (parsed.seniority as JDSchema['seniority']) ?? null,
+        requiredSkills: Array.isArray(parsed.requiredSkills) ? parsed.requiredSkills as string[] : [],
+        preferredSkills: Array.isArray(parsed.preferredSkills) ? parsed.preferredSkills as string[] : [],
+        softSkills: Array.isArray(parsed.softSkills) ? parsed.softSkills as string[] : [],
+        responsibilities: Array.isArray(parsed.responsibilities) ? parsed.responsibilities as string[] : [],
+        keywords: Array.isArray(parsed.keywords) ? parsed.keywords as string[] : [],
+        yearsExperience: {
+            min: typeof parsed.yearsExperience === 'object' && parsed.yearsExperience !== null
+                ? ((parsed.yearsExperience as { min?: unknown }).min as number | null) ?? null
+                : null,
+            max: typeof parsed.yearsExperience === 'object' && parsed.yearsExperience !== null
+                ? ((parsed.yearsExperience as { max?: unknown }).max as number | null) ?? null
+                : null,
+        },
+    };
+}
+
+// ── AI Client ─────────────────────────────────────────────────────────────────
+export class AIClient {
+    private readonly model;
+    private readonly cache = new Map<string, JDSchema>();
+
+    constructor() {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+            throw new Error('[jd-analyzer-api] GEMINI_API_KEY is not set. Add it to your .env file.');
+        }
+        const genAI = new GoogleGenerativeAI(apiKey);
+        this.model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: JD_SYSTEM_PROMPT,
+        });
+    }
+
+    private async callGemini(prompt: string): Promise<JDSchema> {
+        const genResult = await withTimeout(
+            this.model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { responseMimeType: 'application/json' },
+            }),
+            TIMEOUT_MS
+        );
+        const rawText = genResult.response.text();
+
+        const cleaned = stripJsonFences(rawText);
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(cleaned);
+        } catch {
+            throw new Error(`Invalid JSON from Gemini: ${cleaned.slice(0, 200)}`);
+        }
+
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            throw new Error('Gemini returned a non-object JSON value');
+        }
+
+        return validateAndNormalise(parsed as Record<string, unknown>);
+    }
+
+    async analyzeJD(jdText: string): Promise<JDSchema> {
+        const hash = crypto.createHash('sha256').update(jdText).digest('hex');
+        if (this.cache.has(hash)) {
+            console.log('[jd-analyzer-api] Cache hit:', hash.slice(0, 8));
+            return this.cache.get(hash)!;
+        }
+
+        let lastError: Error = new Error('Unknown error');
+
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                // On the second attempt, append a stricter instruction to the prompt
+                const prompt = attempt > 0 ? jdText + JD_RETRY_PROMPT_SUFFIX : jdText;
+                const result = await this.callGemini(prompt);
+                this.cache.set(hash, result);
+                return result;
+            } catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
+
+                if (isQuotaError(err)) {
+                    throw new ApiError('Gemini API quota exceeded. Check your billing or wait before retrying.', 429);
+                }
+
+                if (attempt < MAX_RETRIES) {
+                    const backoff = 1000 * (attempt + 1);
+                    console.warn(`[jd-analyzer-api] Attempt ${attempt + 1} failed: ${lastError.message}. Retrying in ${backoff}ms…`);
+                    await sleep(backoff);
+                }
+            }
+        }
+
+        throw new ApiError(`Gemini extraction failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`, 502);
+    }
+}
+
 export const aiClient = new AIClient();
