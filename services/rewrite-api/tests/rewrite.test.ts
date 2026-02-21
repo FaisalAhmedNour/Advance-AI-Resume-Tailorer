@@ -89,4 +89,31 @@ describe('Rewrite API Client Service', () => {
         spy.mockRestore();
     });
 
+    it('Generates Explanations and strictly caches identical queries saving tokens', async () => {
+        // Mock the LLM to prove caching bypasses the network on duplicate requests
+        const spy = jest.spyOn((aiClient as any).ai.models, 'generateContent').mockResolvedValue({
+            text: JSON.stringify({
+                rationale: "Added Node.js to show backend relevance."
+            })
+        });
+
+        const req = {
+            originalBullet: 'handled things',
+            rewrittenBullet: 'Built APIs with Node.js',
+            jdKeywords: ['Node.js', 'Backend']
+        };
+
+        // First call (Should Hit AI)
+        const first_result = await aiClient.generateExplanation(req);
+        expect(first_result.rationale).toBe("Added Node.js to show backend relevance.");
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        // Second call identical request (Should hit Cache)
+        const second_result = await aiClient.generateExplanation(req);
+        expect(second_result.rationale).toBe("Added Node.js to show backend relevance.");
+        expect(spy).toHaveBeenCalledTimes(1); // Call count didn't increase!
+
+        spy.mockRestore();
+    });
+
 });

@@ -1,15 +1,22 @@
 import { GoogleGenAI } from '@google/genai';
 import pLimit from 'p-limit';
-import { RewriteRequest, RewriteResponse, REWRITE_SYSTEM_PROMPT } from './schema.js';
+import crypto from 'crypto';
+import { RewriteRequest, RewriteResponse, REWRITE_SYSTEM_PROMPT, ExplainRequest, ExplainResponse, EXPLAIN_SYSTEM_PROMPT } from './schema.js';
 
 export class AIClient {
     private ai: GoogleGenAI;
 
     // Rate limiter: Max 3 concurrent LLM rewrite requests locally
     private limit = pLimit(3);
+    private explainCache = new Map<string, string>();
 
     constructor() {
         this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'test-key' });
+    }
+
+    private hashPayload(req: ExplainRequest): string {
+        const raw = `${req.originalBullet}|${req.rewrittenBullet}|${req.jdKeywords.join(',')}`;
+        return crypto.createHash('sha256').update(raw).digest('hex');
     }
 
     /**
@@ -117,6 +124,50 @@ export class AIClient {
 
         // Pass the execution into the concurrency throttler.
         return this.limit(() => this.executeGenerate(req));
+    }
+
+    public async generateExplanation(req: ExplainRequest): Promise<ExplainResponse> {
+        if (!req.originalBullet || !req.rewrittenBullet) {
+            throw new Error("Both original and rewritten bullets are required.");
+        }
+
+        const hashId = this.hashPayload(req);
+        if (this.explainCache.has(hashId)) {
+            return { rationale: this.explainCache.get(hashId)! };
+        }
+
+        const payload = JSON.stringify(req, null, 2);
+
+        try {
+            const response = await this.limit(async () => {
+                return await this.ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: [{ role: 'user', parts: [{ text: payload }] }],
+                    config: { systemInstruction: EXPLAIN_SYSTEM_PROMPT, responseMimeType: 'application/json' }
+                });
+            });
+
+            const rawJson = response.text;
+            if (!rawJson) throw new Error("Empty explanation");
+
+            let parsed: any;
+            try {
+                parsed = JSON.parse(rawJson);
+            } catch (e) {
+                const match = rawJson.match(/```json\n([\s\S]*?)\n```/);
+                if (match) parsed = JSON.parse(match[1]);
+                else throw new Error("Failed JSON parsing for explain");
+            }
+
+            const rationale = parsed.rationale || "Rewritten to better align with requested metrics and required keywords.";
+
+            this.explainCache.set(hashId, rationale);
+            return { rationale };
+
+        } catch (err: any) {
+            console.error('Explanation AI Error:', err);
+            return { rationale: "Rewritten to feature stronger context matching the job description constraints." };
+        }
     }
 }
 

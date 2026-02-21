@@ -17,6 +17,20 @@ export interface RewriteResponse {
     confidence: number;
 }
 
+export interface ExplainRequest {
+    originalBullet: string;
+    rewrittenBullet: string;
+    jdKeywords: string[];
+}
+
+export interface ExplainResponse {
+    rationale: string;
+}
+
+export const EXPLAIN_SYSTEM_PROMPT = `
+Explain in one sentence (<=30 words) why the rewritten bullet better matches the job description, and list which keywords were used. Return only the sentence as plain text or JSON { "rationale": "..." }.
+`;
+
 export const REWRITE_SYSTEM_PROMPT = `
 You are a strict ATS Resume Optimizer. Rewriting a single experience bullet based on provided Job Description keywords.
 ALWAYS RETURN VALID JSON EXACTLY MATCHING THIS SCHEMA:
