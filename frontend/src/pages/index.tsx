@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/router';
-import { Settings, FileText, UploadCloud, Play, FileJson } from 'lucide-react';
+import { Settings, FileText, UploadCloud, Play, FileJson, Cpu } from 'lucide-react';
 import { Stepper } from '../components/Stepper';
 import { MOCK_RESUME, MOCK_JD, MOCK_REWRITES, MOCK_EXPLAINS, MOCK_SCORE, MOCK_RESUME_TEXT, MOCK_JD_TEXT } from '../lib/mockData';
 
@@ -179,6 +179,13 @@ export default function Home() {
                                 <Play size={16} />
                                 {/* {isDemo ? 'Demo Mode: Active' : 'Demo Mode: Off'} */}
                                 Demo
+                            </button>
+                            <button
+                                onClick={() => router.push('/interview')}
+                                className="px-4 py-2 rounded-lg font-bold text-sm transition-all flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100"
+                            >
+                                <Cpu size={16} />
+                                AI Interview Preparation
                             </button>
                             {!isDemo && (
                                 <span className="text-xs text-slate-400 max-w-xs leading-tight">Activating Demo bypasses local ports substituting native memory JSON mocks instantly.</span>
