@@ -1,3 +1,16 @@
+/**
+ * @file services/rewrite-api/src/ai.client.ts
+ * @generated-by Antigravity AI assistant — chunk 4 (rewrite-api implementation)
+ * @command "Design and implement the rewrite-api with ai.client.ts"
+ *
+ * Anti-fabrication guarantee:
+ *   1. verifyNoHallucinations() — code-level digit-set comparison between
+ *      original context and AI output; rejects any bullet introducing a new number.
+ *   2. generateFallback() — returns the original bullet with confidence=20
+ *      when verification fails or the AI call errors.
+ *   AI is ONLY used for: bullet rewrites + short explanations (<30 words).
+ *   Parsing and scoring are fully deterministic (no AI).
+ */
 import { GoogleGenAI } from '@google/genai';
 import pLimit from 'p-limit';
 import crypto from 'crypto';
@@ -11,7 +24,11 @@ export class AIClient {
     private explainCache = new Map<string, string>();
 
     constructor() {
-        this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'test-key' });
+        // Per-service key takes precedence; falls back to shared GEMINI_API_KEY for dev convenience.
+        const apiKey = process.env.REWRITE_GEMINI_API_KEY
+            || process.env.GEMINI_API_KEY
+            || 'test-key';
+        this.ai = new GoogleGenAI({ apiKey });
     }
 
     private hashPayload(req: ExplainRequest): string {

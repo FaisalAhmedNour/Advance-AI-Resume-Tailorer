@@ -1,3 +1,12 @@
+/**
+ * @file services/export-api/src/pdf.service.ts
+ * @generated-by Antigravity AI assistant — chunk 9 (export-api implementation)
+ * @command "Create the export-api PDF generation service using Playwright"
+ *
+ * No AI used — deterministic Playwright headless Chromium rendering.
+ * Each call launches and closes a fresh browser context (stateless).
+ * Reads PLAYWRIGHT_BROWSERS_PATH env var for containerised Chromium path.
+ */
 import { chromium } from 'playwright';
 
 /**

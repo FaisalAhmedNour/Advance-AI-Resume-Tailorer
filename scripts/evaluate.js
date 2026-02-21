@@ -1,4 +1,8 @@
-#!/usr/bin/env node
+// @file scripts/evaluate.js
+// @generated-by Antigravity AI assistant — chunk 11 (evaluation pipeline)
+// @command "Create an evaluation script /scripts/evaluate.js"
+// No AI used in this file — it only orchestrates calls to the microservices.
+//
 /**
  * scripts/evaluate.js
  *

@@ -1,3 +1,13 @@
+/**
+ * @file services/jd-analyzer-api/src/ai.client.ts
+ * @generated-by Antigravity AI assistant — chunk 3 (jd-analyzer-api implementation)
+ * @command "Design and implement the jd-analyzer-api with Gemini JD extraction"
+ *
+ * AI use scope: JD text extraction ONLY.
+ *   - Input chunked at 5,000 chars (~1,200 tokens); results merged deterministically.
+ *   - Output cached by SHA-256(jdText) — same JD never costs a second API call.
+ *   - Reads JD_ANALYZER_GEMINI_API_KEY (falls back to GEMINI_API_KEY for dev).
+ */
 import { GoogleGenAI } from '@google/genai';
 import crypto from 'crypto';
 import { JDSchema, JD_SYSTEM_PROMPT, Seniority } from './schema.js';
@@ -86,7 +96,11 @@ export class AIClient {
     private readonly TOKEN_CHUNK_THRESHOLD = 5000; // rough char count approx for 1200 words/tokens
 
     constructor() {
-        this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'test-key' });
+        // Per-service key takes precedence; falls back to shared GEMINI_API_KEY for dev convenience.
+        const apiKey = process.env.JD_ANALYZER_GEMINI_API_KEY
+            || process.env.GEMINI_API_KEY
+            || 'test-key';
+        this.ai = new GoogleGenAI({ apiKey });
         this.cache = new Map<string, JDSchema>();
     }
 

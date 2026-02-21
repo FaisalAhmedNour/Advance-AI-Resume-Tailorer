@@ -1,3 +1,12 @@
+/**
+ * @file services/export-api/src/template.service.ts
+ * @generated-by Antigravity AI assistant — chunk 9 (export-api implementation)
+ * @command "Create the export-api HTML template rendering service"
+ *
+ * No AI used — deterministic token replacement ({{TOKEN}} placeholders).
+ * Safe null-handling for all optional resume fields.
+ * Reads HTML templates from the adjacent templates/ directory.
+ */
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
