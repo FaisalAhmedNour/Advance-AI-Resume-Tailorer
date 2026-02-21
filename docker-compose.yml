@@ -1,0 +1,162 @@
+name: resume-tailorer
+
+networks:
+  tailorer-net:
+    driver: bridge
+
+services:
+  # ── parser-api ──────────────────────────────────────────────────────────────
+  parser-api:
+    build:
+      context: .
+      dockerfile: services/parser-api/Dockerfile
+    image: resume-tailorer/parser-api:latest
+    container_name: parser-api
+    networks: [ tailorer-net ]
+    ports:
+      - "3001:3001"
+    env_file:
+      - infra/.env
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── jd-analyzer-api ─────────────────────────────────────────────────────────
+  jd-analyzer-api:
+    build:
+      context: .
+      dockerfile: services/jd-analyzer-api/Dockerfile
+    image: resume-tailorer/jd-analyzer-api:latest
+    container_name: jd-analyzer-api
+    networks: [ tailorer-net ]
+    ports:
+      - "3002:3002"
+    env_file:
+      - infra/.env
+    environment:
+      PORT: "3002"
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── rewrite-api (includes /explain route) ───────────────────────────────────
+  rewrite-api:
+    build:
+      context: .
+      dockerfile: services/rewrite-api/Dockerfile
+    image: resume-tailorer/rewrite-api:latest
+    container_name: rewrite-api
+    networks: [ tailorer-net ]
+    ports:
+      - "3003:3003"
+    env_file:
+      - infra/.env
+    environment:
+      PORT: "3003"
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── scoring-api ─────────────────────────────────────────────────────────────
+  scoring-api:
+    build:
+      context: .
+      dockerfile: services/scoring-api/Dockerfile
+    image: resume-tailorer/scoring-api:latest
+    container_name: scoring-api
+    networks: [ tailorer-net ]
+    ports:
+      - "3005:3005"
+    env_file:
+      - infra/.env
+    environment:
+      PORT: "3005"
+      NODE_ENV: production
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3005/health || exit 1" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── export-api ──────────────────────────────────────────────────────────────
+  export-api:
+    build:
+      context: .
+      dockerfile: services/export-api/Dockerfile
+    image: resume-tailorer/export-api:latest
+    container_name: export-api
+    networks: [ tailorer-net ]
+    ports:
+      - "3006:3006"
+    env_file:
+      - infra/.env
+    environment:
+      PORT: "3006"
+      NODE_ENV: production
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3006/health || exit 1" ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: resume-tailorer/frontend:latest
+    container_name: frontend
+    networks: [ tailorer-net ]
+    ports:
+      - "3000:3000"
+    env_file:
+      - infra/.env
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      # Point frontend at containerised APIs (internal network DNS)
+      NEXT_PUBLIC_PARSER_URL: http://parser-api:3001
+      NEXT_PUBLIC_ANALYZER_URL: http://jd-analyzer-api:3002
+      NEXT_PUBLIC_REWRITE_URL: http://rewrite-api:3003
+      NEXT_PUBLIC_SCORING_URL: http://scoring-api:3005
+      NEXT_PUBLIC_EXPORT_URL: http://export-api:3006
+    depends_on:
+      parser-api:
+        condition: service_healthy
+      jd-analyzer-api:
+        condition: service_healthy
+      rewrite-api:
+        condition: service_healthy
+      scoring-api:
+        condition: service_healthy
+      export-api:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1" ]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
