@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  parser-api:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.parser
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+
+  jd-analyzer-api:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.analyzer
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - AI_API_KEY=${AI_API_KEY}
+
+  rewrite-api:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.rewrite
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - AI_API_KEY=${AI_API_KEY}
+
+  scoring-api:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.scoring
+    ports:
+      - "3004:3004"
+    environment:
+      - PORT=3004
+
+  frontend:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_PARSER_API=http://localhost:3001/api/v1/parser
+      - NEXT_PUBLIC_ANALYZER_API=http://localhost:3002/api/v1/jd-analyzer
+      - NEXT_PUBLIC_REWRITE_API=http://localhost:3003/api/v1/rewrite
+      - NEXT_PUBLIC_SCORING_API=http://localhost:3004/api/v1/score
+    depends_on:
+      - parser-api
+      - jd-analyzer-api
+      - rewrite-api
+      - scoring-api

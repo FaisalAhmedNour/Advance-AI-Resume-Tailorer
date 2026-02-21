@@ -1,0 +1,12 @@
+FROM node:22-alpine AS base
+
+RUN npm install -g pnpm
+WORKDIR /app
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY services/scoring-api/package.json ./services/scoring-api/
+RUN pnpm install --filter scoring-api...
+COPY services/scoring-api ./services/scoring-api
+
+EXPOSE 3004
+
+CMD ["pnpm", "--filter", "scoring-api", "run", "dev"]

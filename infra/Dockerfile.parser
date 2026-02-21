@@ -1,0 +1,21 @@
+FROM node:22-alpine AS base
+
+# Install pnpm workspace tools
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# Copy root configurations
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Copy only the parser-api service package first
+COPY services/parser-api/package.json ./services/parser-api/
+
+# Install dependencies filtering for parser-api only
+RUN pnpm install --filter parser-api...
+
+# Copy source
+COPY services/parser-api ./services/parser-api
+
+EXPOSE 3001
+
+CMD ["pnpm", "--filter", "parser-api", "run", "dev"]
